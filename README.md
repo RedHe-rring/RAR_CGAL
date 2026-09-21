@@ -109,6 +109,54 @@ build\Release\rar_cgal.exe input.obj output_no_project.obj ^
 
 The RAR mode prints the initial curvature and target-length min/mean/max statistics to make abnormal fields easier to detect.
 
+## Automatic output naming
+
+The output mesh argument is optional.
+
+If you provide an output path, it is used exactly as given:
+
+```bat
+build\Release\rar_cgal.exe input.obj my_result.obj ^
+  --field rar ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --iterations 5
+```
+
+If you omit the output path:
+
+```bat
+build\Release\rar_cgal.exe input.obj ^
+  --field rar ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --iterations 5 ^
+  --relax-steps 3
+```
+
+the program writes the result next to the input mesh using a parameter-aware filename such as:
+
+```text
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
+```
+
+The automatic name currently records:
+
+```text
+field
+epsilon
+min edge length
+max edge length
+iteration count
+relaxation-step count
+projection on/off
+```
+
+Decimal points are encoded as `p` so filenames remain shell-friendly
+(for example, `0.001 -> 0p001`). The original input extension is preserved.
+
 ## Exporting the initial fields
 
 Both adaptive modes can export the **pre-remeshing** curvature and target-length fields:
@@ -178,13 +226,14 @@ maximum value -> red
 
 There is no percentile clipping; this corresponds to the 0th-100th percentile range.
 
-Color the RAR target-length field:
+Color the RAR target-length field. Because smaller target length means stronger refinement, `--invert` is usually more intuitive:
 
 ```bat
 python tools\colorize_ply.py ^
   diagnostics\rar_field.ply ^
   diagnostics\rar_target_length_rgb.ply ^
-  --property target_length
+  --property target_length ^
+  --invert
 ```
 
 Color the RAR curvature field:
