@@ -1,0 +1,8 @@
+build/
+out/
+*.obj
+*.ply
+*.off
+.vscode/
+.idea/
+.DS_Store
