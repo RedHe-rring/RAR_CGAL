@@ -1,5 +1,6 @@
 #pragma once
 
+#include "rar/FieldExport.h"
 #include "rar/RARSizingField.h"
 #include "rar/RemeshConfig.h"
 #include "rar/Types.h"
@@ -22,6 +23,18 @@ inline RARFieldStats run_rar_field_cgal_remeshing(
         mesh);
 
     const RARFieldStats initial_stats = sizing_field.stats();
+
+    if (!cfg.export_field_prefix.empty()) {
+        write_field_diagnostics(
+            mesh,
+            cfg.export_field_prefix,
+            [&](const Mesh::Vertex_index v) {
+                return sizing_field.curvature(v);
+            },
+            [&](const Mesh::Vertex_index v) {
+                return sizing_field.target_length(v);
+            });
+    }
 
     PMP::isotropic_remeshing(
         faces(mesh),
