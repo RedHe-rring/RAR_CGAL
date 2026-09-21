@@ -142,7 +142,7 @@ the program writes the result next to the input mesh using a parameter-aware fil
 input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
 ```
 
-The automatic mesh name and the default field basename both record:
+The automatic mesh filename records:
 
 ```text
 field
@@ -153,6 +153,8 @@ iteration count
 relaxation-step count
 projection on/off
 ```
+
+The default field files are placed inside a folder whose name matches the output mesh stem, so the field files themselves can stay concise.
 
 Decimal points are encoded as `p` so filenames remain shell-friendly
 (for example, `0.001 -> 0p001`). The original input extension is preserved.
@@ -173,13 +175,17 @@ relax-steps=3
 projection=on
 ```
 
-the mesh and field outputs share the same parameterized basename:
+the mesh is written normally, while field artifacts are grouped in a same-named folder:
 
 ```text
 input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.ply
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.csv
+
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on/
+├── field.ply
+└── field.csv
 ```
+
+This keeps the experiment parameters in one place—the model/folder name—without repeating them on every diagnostic file.
 
 You do not need to pass `--export-field`.
 
@@ -191,7 +197,7 @@ build\Release\rar_cgal.exe input.obj ^
   --no-export-field
 ```
 
-To override only the field-output prefix manually:
+To override the field-output stem manually:
 
 ```bat
 build\Release\rar_cgal.exe input.obj ^
@@ -202,8 +208,8 @@ build\Release\rar_cgal.exe input.obj ^
 which produces:
 
 ```text
-diagnostics/custom_rar_field.csv
-diagnostics/custom_rar_field.ply
+diagnostics/custom_rar.csv
+diagnostics/custom_rar.ply
 ```
 
 The CSV columns are:
@@ -233,95 +239,63 @@ The repository includes:
 tools/colorize_ply.py
 ```
 
-It maps one scalar vertex property in an ASCII PLY file to a
-blue -> cyan -> green -> yellow -> red heatmap while preserving the mesh faces.
-
-The output path is now optional, following the same experiment-traceability idea as the C++ executable.
-
-For example, given:
+With the default field layout, an experiment now looks like:
 
 ```text
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.ply
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
+
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on/
+├── field.ply
+└── field.csv
 ```
 
-run:
+Color the target-length field directly inside that folder:
 
 ```bat
 python tools\colorize_ply.py ^
-  input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.ply ^
+  input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on\field.ply ^
   --property target_length ^
   --invert
 ```
 
-The script automatically writes a file such as:
+Because the input is now simply `field.ply`, the auto-generated visualization name is also concise:
 
 ```text
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field__color-target_length__invert-on__vmin-0p001__vmax-0p5.ply
+field__color-target_length__invert-on__vmin-0p001__vmax-0p5.ply
 ```
 
-The visualization filename therefore preserves all remeshing parameters inherited from the field filename and additionally records:
+and it remains inside the experiment folder.
 
-```text
-colored scalar property
-invert on/off
-actual visualization minimum
-actual visualization maximum
-```
-
-By default, the scalar range is the full actual range of the selected property:
-
-```text
-minimum value -> blue
-maximum value -> red
-```
-
-There is no percentile clipping; this corresponds to the 0th-100th percentile range.
-
-For `target_length`, `--invert` is usually more intuitive because smaller target length means stronger refinement:
+For curvature:
 
 ```bat
 python tools\colorize_ply.py ^
-  <parameterized_field_file>.ply ^
-  --property target_length ^
-  --invert
-```
-
-For curvature, the default direction is usually appropriate:
-
-```bat
-python tools\colorize_ply.py ^
-  <parameterized_field_file>.ply ^
+  <experiment-folder>\field.ply ^
   --property curvature
 ```
 
-For direct side-by-side comparison, force the same display range for both fields:
+For direct CGAL-vs-RAR comparison, force the same display range:
 
 ```bat
-python tools\colorize_ply.py <cgal_field_file>.ply ^
+python tools\colorize_ply.py <cgal-folder>\field.ply ^
   --property target_length ^
   --min 0.001 ^
   --max 0.05 ^
   --invert
 
-python tools\colorize_ply.py <rar_field_file>.ply ^
+python tools\colorize_ply.py <rar-folder>\field.ply ^
   --property target_length ^
   --min 0.001 ^
   --max 0.05 ^
   --invert
 ```
 
-The automatic filenames will then explicitly contain:
+The visualization filename records the scalar property, invert state, and actual display range, while the parent folder records the remeshing parameters.
 
-```text
-__vmin-0p001__vmax-0p05
-```
-
-Using the same `--min/--max` avoids a misleading visualization where two different numeric ranges are independently stretched to the full heatmap.
-
-If you want a custom output filename, provide it as the second positional argument; it will be used exactly as given:
+If you want a custom visualization filename, provide it as the second positional argument:
 
 ```bat
-python tools\colorize_ply.py input_field.ply my_visualization.ply ^
+python tools\colorize_ply.py <experiment-folder>\field.ply my_visualization.ply ^
   --property target_length ^
   --invert
 ```
