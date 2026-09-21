@@ -139,20 +139,22 @@ build\Release\rar_cgal.exe input.obj ^
 the program writes the result next to the input mesh using a parameter-aware filename such as:
 
 ```text
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
 ```
 
-The automatic mesh filename records:
+The automatic mesh filename records the common experiment parameters first and the field type last:
 
 ```text
-field
 epsilon
 min edge length
 max edge length
 iteration count
 relaxation-step count
 projection on/off
+field
 ```
+
+Putting `field` last is intentional: when filenames are sorted lexicographically, results with identical remeshing parameters but different sizing fields stay adjacent.
 
 The default field files are placed inside a folder whose name matches the output mesh stem, so the field files themselves can stay concise.
 
@@ -178,9 +180,9 @@ projection=on
 the mesh is written normally, while field artifacts are grouped in a same-named folder:
 
 ```text
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
 
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on/
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar/
 ├── field.ply
 └── field.csv
 ```
@@ -242,9 +244,9 @@ tools/colorize_ply.py
 With the default field layout, an experiment now looks like:
 
 ```text
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
 
-input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on/
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar/
 ├── field.ply
 └── field.csv
 ```
@@ -253,7 +255,7 @@ Color the target-length field directly inside that folder:
 
 ```bat
 python tools\colorize_ply.py ^
-  input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on\field.ply ^
+  input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar\field.ply ^
   --property target_length ^
   --invert
 ```
