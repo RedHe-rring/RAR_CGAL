@@ -1,8 +1,11 @@
+#include "rar/OutputNaming.h"
 #include "rar/RARSizingField.h"
 #include "rar/RemeshConfig.h"
 
 #include <cassert>
 #include <cmath>
+#include <filesystem>
+#include <string>
 
 int main() {
     rar::RemeshConfig cfg;
@@ -30,6 +33,26 @@ int main() {
     const double clamped_small =
         rar::rar_target_length(1e12, epsilon, 0.1, 2.0);
     assert(std::abs(clamped_small - 0.1) < 1e-12);
+
+    rar::RemeshConfig naming;
+    naming.input_path = "models/sample.obj";
+    naming.field_type = rar::FieldType::RAR;
+    naming.epsilon = 0.001;
+    naming.min_edge_length = 0.001;
+    naming.max_edge_length = 0.5;
+    naming.iterations = 5;
+    naming.relaxation_steps = 3;
+    naming.do_project = true;
+
+    const std::string auto_name =
+        std::filesystem::path(
+            rar::make_auto_output_path(naming))
+            .filename()
+            .string();
+
+    assert(
+        auto_name ==
+        "sample__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj");
 
     return 0;
 }
