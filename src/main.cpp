@@ -33,7 +33,8 @@ void print_usage(const char* exe) {
         << "  --max-edge <value>      Maximum target edge length (default: 0.5)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
         << "  --relax-steps <n>       Relaxation steps per iteration (default: 3)\n"
-        << "  --export-field <prefix> Export initial field as <prefix>_field.csv/.ply\n"
+        << "  --export-field <prefix> Override field-output prefix\n"
+        << "  --no-export-field       Disable default field export\n"
         << "  --no-project            Disable projection to the input surface\n\n"
         << "Field notes:\n"
         << "  cgal-adaptive  CGAL 6.1.x Adaptive_sizing_field.\n"
@@ -104,6 +105,9 @@ rar::RemeshConfig parse_args(int argc, char** argv) {
                 static_cast<unsigned int>(std::stoul(require_value(arg)));
         } else if (arg == "--export-field") {
             cfg.export_field_prefix = require_value(arg);
+            cfg.export_field = true;
+        } else if (arg == "--no-export-field") {
+            cfg.export_field = false;
         } else if (arg == "--no-project") {
             cfg.do_project = false;
         } else if (arg == "--help" || arg == "-h") {
@@ -117,6 +121,11 @@ rar::RemeshConfig parse_args(int argc, char** argv) {
     if (cfg.output_path.empty()) {
         cfg.output_path = rar::make_auto_output_path(cfg);
         cfg.output_path_auto = true;
+    }
+
+    if (cfg.export_field && cfg.export_field_prefix.empty()) {
+        cfg.export_field_prefix =
+            rar::make_auto_field_prefix(cfg);
     }
 
     return cfg;
@@ -198,14 +207,24 @@ int main(int argc, char** argv) {
             << ", iterations=" << cfg.iterations
             << ", relax_steps=" << cfg.relaxation_steps
             << ", project=" << (cfg.do_project ? "true" : "false");
-        if (!cfg.export_field_prefix.empty()) {
+        std::cout
+            << ", export_field="
+            << (cfg.export_field ? "true" : "false");
+        if (cfg.export_field) {
             std::cout
-                << ", export_field=" << cfg.export_field_prefix;
+                << ", field_prefix="
+                << cfg.export_field_prefix;
         }
         std::cout << '\n';
         std::cout
             << (cfg.output_path_auto ? "Auto output: " : "Output: ")
             << cfg.output_path << '\n';
+        if (cfg.export_field) {
+            std::cout
+                << "Field outputs: "
+                << cfg.export_field_prefix << "_field.ply, "
+                << cfg.export_field_prefix << "_field.csv\n";
+        }
 
         const auto begin = std::chrono::steady_clock::now();
 
