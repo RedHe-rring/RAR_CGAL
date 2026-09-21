@@ -236,7 +236,39 @@ tools/colorize_ply.py
 It maps one scalar vertex property in an ASCII PLY file to a
 blue -> cyan -> green -> yellow -> red heatmap while preserving the mesh faces.
 
-By default, it uses the full scalar range:
+The output path is now optional, following the same experiment-traceability idea as the C++ executable.
+
+For example, given:
+
+```text
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.ply
+```
+
+run:
+
+```bat
+python tools\colorize_ply.py ^
+  input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.ply ^
+  --property target_length ^
+  --invert
+```
+
+The script automatically writes a file such as:
+
+```text
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field__color-target_length__invert-on__vmin-0p001__vmax-0p5.ply
+```
+
+The visualization filename therefore preserves all remeshing parameters inherited from the field filename and additionally records:
+
+```text
+colored scalar property
+invert on/off
+actual visualization minimum
+actual visualization maximum
+```
+
+By default, the scalar range is the full actual range of the selected property:
 
 ```text
 minimum value -> blue
@@ -245,56 +277,54 @@ maximum value -> red
 
 There is no percentile clipping; this corresponds to the 0th-100th percentile range.
 
-Color the RAR target-length field. Because smaller target length means stronger refinement, `--invert` is usually more intuitive:
+For `target_length`, `--invert` is usually more intuitive because smaller target length means stronger refinement:
 
 ```bat
 python tools\colorize_ply.py ^
-  diagnostics\rar_field.ply ^
-  diagnostics\rar_target_length_rgb.ply ^
+  <parameterized_field_file>.ply ^
   --property target_length ^
   --invert
 ```
 
-Color the RAR curvature field:
+For curvature, the default direction is usually appropriate:
 
 ```bat
 python tools\colorize_ply.py ^
-  diagnostics\rar_field.ply ^
-  diagnostics\rar_curvature_rgb.ply ^
+  <parameterized_field_file>.ply ^
   --property curvature
 ```
 
-Do the same for CGAL:
+For direct side-by-side comparison, force the same display range for both fields:
 
 ```bat
-python tools\colorize_ply.py ^
-  diagnostics\cgal_field.ply ^
-  diagnostics\cgal_target_length_rgb.ply ^
-  --property target_length
-```
-
-Reverse the color direction when desired:
-
-```bat
-python tools\colorize_ply.py ^
-  diagnostics\rar_field.ply ^
-  diagnostics\rar_target_length_rgb_invert.ply ^
+python tools\colorize_ply.py <cgal_field_file>.ply ^
   --property target_length ^
+  --min 0.001 ^
+  --max 0.05 ^
+  --invert
+
+python tools\colorize_ply.py <rar_field_file>.ply ^
+  --property target_length ^
+  --min 0.001 ^
+  --max 0.05 ^
   --invert
 ```
 
-For direct side-by-side comparison, it is often better to force the same display range for both fields:
+The automatic filenames will then explicitly contain:
 
-```bat
-python tools\colorize_ply.py diagnostics\cgal_field.ply diagnostics\cgal_rgb.ply ^
-  --property target_length --min 0.001 --max 0.05
-
-python tools\colorize_ply.py diagnostics\rar_field.ply diagnostics\rar_rgb.ply ^
-  --property target_length --min 0.001 --max 0.05
+```text
+__vmin-0p001__vmax-0p05
 ```
 
-Using the same `--min/--max` avoids a misleading visualization where two different
-numeric ranges are each independently stretched to the full heatmap.
+Using the same `--min/--max` avoids a misleading visualization where two different numeric ranges are independently stretched to the full heatmap.
+
+If you want a custom output filename, provide it as the second positional argument; it will be used exactly as given:
+
+```bat
+python tools\colorize_ply.py input_field.ply my_visualization.ply ^
+  --property target_length ^
+  --invert
+```
 
 ## Architecture
 
