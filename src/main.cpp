@@ -1,5 +1,6 @@
 #include "rar/CGALAdaptiveRemesher.h"
 #include "rar/RARRemesher.h"
+#include "rar/OutputNaming.h"
 #include "rar/RemeshConfig.h"
 #include "rar/Types.h"
 
@@ -22,7 +23,10 @@ namespace {
 void print_usage(const char* exe) {
     std::cerr
         << "Usage:\n  " << exe
-        << " <input_mesh> <output_mesh> [options]\n\n"
+        << " <input_mesh> [output_mesh] [options]\n\n"
+        << "Options:\n"
+        << "If output_mesh is omitted, the output filename is generated from the input\n"
+        << "name and all remeshing parameters.\n\n"
         << "Options:\n"
         << "  --field <name>          cgal-adaptive | rar (default: cgal-adaptive)\n"
         << "  --epsilon <value>       Approximation tolerance (default: 0.001)\n"
@@ -50,16 +54,32 @@ rar::FieldType parse_field_type(const std::string& value) {
 }
 
 rar::RemeshConfig parse_args(int argc, char** argv) {
-    if (argc < 3) {
+    if (argc == 2) {
+        const std::string first = argv[1];
+        if (first == "--help" || first == "-h") {
+            print_usage(argv[0]);
+            std::exit(EXIT_SUCCESS);
+        }
+    }
+
+    if (argc < 2) {
         print_usage(argv[0]);
         std::exit(EXIT_FAILURE);
     }
 
     rar::RemeshConfig cfg;
     cfg.input_path = argv[1];
-    cfg.output_path = argv[2];
 
-    for (int i = 3; i < argc; ++i) {
+    int option_start = 2;
+    if (argc > 2) {
+        const std::string second = argv[2];
+        if (!second.empty() && second[0] != '-') {
+            cfg.output_path = second;
+            option_start = 3;
+        }
+    }
+
+    for (int i = option_start; i < argc; ++i) {
         const std::string arg = argv[i];
 
         auto require_value = [&](const std::string& name) -> std::string {
@@ -93,6 +113,11 @@ rar::RemeshConfig parse_args(int argc, char** argv) {
         } else {
             throw std::invalid_argument("Unknown option: " + arg);
         }
+    }
+
+    if (cfg.output_path.empty()) {
+        cfg.output_path = rar::make_auto_output_path(cfg);
+        cfg.output_path_auto = true;
     }
 
     return cfg;
@@ -179,6 +204,9 @@ int main(int argc, char** argv) {
                 << ", export_field=" << cfg.export_field_prefix;
         }
         std::cout << '\n';
+        std::cout
+            << (cfg.output_path_auto ? "Auto output: " : "Output: ")
+            << cfg.output_path << '\n';
 
         const auto begin = std::chrono::steady_clock::now();
 
