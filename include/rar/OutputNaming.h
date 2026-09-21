@@ -44,13 +44,13 @@ inline std::string make_parameterized_stem(
     std::ostringstream name;
     name
         << stem
-        << "__field-" << field_type_name(cfg.field_type)
         << "__eps-" << filename_number(cfg.epsilon)
         << "__lmin-" << filename_number(cfg.min_edge_length)
         << "__lmax-" << filename_number(cfg.max_edge_length)
         << "__it-" << cfg.iterations
         << "__relax-" << cfg.relaxation_steps
-        << "__proj-" << (cfg.do_project ? "on" : "off");
+        << "__proj-" << (cfg.do_project ? "on" : "off")
+        << "__field-" << field_type_name(cfg.field_type);
 
     return name.str();
 }
