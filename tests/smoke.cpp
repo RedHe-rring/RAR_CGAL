@@ -52,7 +52,7 @@ int main() {
 
     assert(
         auto_name ==
-        "sample__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj");
 
     naming.output_path = rar::make_auto_output_path(naming);
 
@@ -63,7 +63,7 @@ int main() {
         auto_field_prefix.filename().string() == "field");
     assert(
         auto_field_prefix.parent_path().filename().string() ==
-        "sample__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar");
 
     assert(naming.export_field);
 
