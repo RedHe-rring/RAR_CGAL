@@ -33,7 +33,7 @@ void print_usage(const char* exe) {
         << "  --max-edge <value>      Maximum target edge length (default: 0.5)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
         << "  --relax-steps <n>       Relaxation steps per iteration (default: 3)\n"
-        << "  --export-field <prefix> Override field-output prefix\n"
+        << "  --export-field <prefix> Override field-output stem (.ply/.csv added)\n"
         << "  --no-export-field       Disable default field export\n"
         << "  --no-project            Disable projection to the input surface\n\n"
         << "Field notes:\n"
@@ -222,8 +222,8 @@ int main(int argc, char** argv) {
         if (cfg.export_field) {
             std::cout
                 << "Field outputs: "
-                << cfg.export_field_prefix << "_field.ply, "
-                << cfg.export_field_prefix << "_field.csv\n";
+                << cfg.export_field_prefix << ".ply, "
+                << cfg.export_field_prefix << ".csv\n";
         }
 
         const auto begin = std::chrono::steady_clock::now();
