@@ -30,6 +30,7 @@ void print_usage(const char* exe) {
         << "  --max-edge <value>      Maximum target edge length (default: 0.5)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
         << "  --relax-steps <n>       Relaxation steps per iteration (default: 3)\n"
+        << "  --export-field <prefix> Export initial field as <prefix>_field.csv/.ply\n"
         << "  --no-project            Disable projection to the input surface\n\n"
         << "Field notes:\n"
         << "  cgal-adaptive  CGAL 6.1.x Adaptive_sizing_field.\n"
@@ -82,6 +83,8 @@ rar::RemeshConfig parse_args(int argc, char** argv) {
         } else if (arg == "--relax-steps") {
             cfg.relaxation_steps =
                 static_cast<unsigned int>(std::stoul(require_value(arg)));
+        } else if (arg == "--export-field") {
+            cfg.export_field_prefix = require_value(arg);
         } else if (arg == "--no-project") {
             cfg.do_project = false;
         } else if (arg == "--help" || arg == "-h") {
@@ -170,8 +173,12 @@ int main(int argc, char** argv) {
             << ", max_edge=" << cfg.max_edge_length
             << ", iterations=" << cfg.iterations
             << ", relax_steps=" << cfg.relaxation_steps
-            << ", project=" << (cfg.do_project ? "true" : "false")
-            << '\n';
+            << ", project=" << (cfg.do_project ? "true" : "false");
+        if (!cfg.export_field_prefix.empty()) {
+            std::cout
+                << ", export_field=" << cfg.export_field_prefix;
+        }
+        std::cout << '\n';
 
         const auto begin = std::chrono::steady_clock::now();
 
