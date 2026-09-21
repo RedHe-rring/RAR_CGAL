@@ -1,12 +1,50 @@
 # RAR_CGAL
 
-A CGAL-based adaptive isotropic remeshing baseline intended to provide a stable backend for reproducing and studying the RAR family of methods (Dunyach et al., 2013).
+A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing fields while keeping a stable common remeshing backend.
 
-## Status
+## Implemented modes
 
-V1 uses CGAL 6.1.1's `Adaptive_sizing_field` together with `Polygon_mesh_processing::isotropic_remeshing()`. CGAL documents this field as curvature-adaptive and its remesher performs edge split, collapse, flip, tangential relaxation, and projection.
+The executable now keeps two adaptive sizing modes side by side:
 
-This V1 should be treated as **CGAL-Adaptive / RAR-family**, not yet as a paper-faithful reimplementation of every RAR detail. A later phase will add a custom `RARSizingField` while keeping CGAL as the topology/remeshing backend.
+- `cgal-adaptive`: CGAL 6.1.x `Adaptive_sizing_field`.
+- `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
+
+This separation is intentional. It allows direct experiments on the sizing field without changing split/collapse/flip infrastructure.
+
+## Current methodological status
+
+### CGAL-Adaptive
+
+CGAL computes local principal curvatures with
+`interpolated_corrected_curvatures()`, converts them to a curvature-adaptive target length, and uses the result through the `PMPSizingField` interface.
+
+### RAR-field-CGAL
+
+The custom RAR field implements the paper's main sizing equations:
+
+```text
+H_i     = 1/2 ||Delta x_i||
+K_i     = angle_deficit / A_i
+kappa_i = H_i + sqrt(max(H_i^2 - K_i, 0))
+
+L_i = sqrt(6 epsilon / kappa_i - 3 epsilon^2)
+L_i <- clamp(L_i, L_min, L_max)
+
+L(e) = min(L_i, L_j)
+```
+
+Implementation details:
+
+- cotangent Laplace-Beltrami discretization
+- mixed Voronoi area
+- split when `|e| > 4/3 L(e)`
+- collapse when `|e| < 4/5 L(e)`
+- midpoint placement for split vertices
+- new split-vertex sizing interpolated from the two current neighbors
+
+The local mesh operations are still performed by CGAL.
+
+**Important:** this mode is currently named `RAR-field-CGAL`, not yet `RAR-exact`. CGAL's adaptive tangential relaxation is not identical to Eq. (6) in the 2013 paper. The next phase will implement the paper relaxation separately so that this difference can also be studied instead of silently hidden.
 
 ## Requirements
 
@@ -17,13 +55,13 @@ This V1 should be treated as **CGAL-Adaptive / RAR-family**, not yet as a paper-
 
 On Windows with vcpkg:
 
-```powershell
+```bat
 vcpkg install cgal:x64-windows eigen3:x64-windows
 ```
 
 Configure and build:
 
-```powershell
+```bat
 cmake -S . -B build ^
   -DCMAKE_TOOLCHAIN_FILE=E:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake ^
   -DVCPKG_TARGET_TRIPLET=x64-windows
@@ -31,47 +69,69 @@ cmake -S . -B build ^
 cmake --build build --config Release
 ```
 
+Run tests:
+
+```bat
+ctest --test-dir build -C Release --output-on-failure
+```
+
 ## Usage
 
-```powershell
-./build/Release/rar_cgal.exe input.obj output.obj `
-  --epsilon 0.001 `
-  --min-edge 0.001 `
-  --max-edge 0.5 `
-  --iterations 5 `
-  --relax-steps 3
+### CGAL adaptive field
+
+```bat
+build\Release\rar_cgal.exe input.obj output_cgal.obj ^
+  --field cgal-adaptive ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --iterations 5
 ```
 
-Disable projection for diagnostics:
+### RAR paper-oriented field
 
-```powershell
-./build/Release/rar_cgal.exe input.obj output_no_project.obj --no-project
+```bat
+build\Release\rar_cgal.exe input.obj output_rar.obj ^
+  --field rar ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --iterations 5
 ```
 
-## V1 data flow
+### Projection diagnostic
+
+```bat
+build\Release\rar_cgal.exe input.obj output_no_project.obj ^
+  --field rar ^
+  --no-project
+```
+
+The RAR mode prints the initial curvature and target-length min/mean/max statistics to make abnormal fields easier to detect.
+
+## Architecture
 
 ```text
-Input mesh
-  -> read / validate
-  -> triangulate if necessary
-  -> CGAL Adaptive_sizing_field
-  -> CGAL isotropic_remeshing
-       split
-       collapse
-       flip
-       tangential relaxation
-       projection (optional)
-  -> output mesh
+                            CGAL isotropic_remeshing
+                                      |
+                      +---------------+---------------+
+                      |                               |
+            CGAL Adaptive field              RAR paper field
+       interpolated corrected curvature      cotangent H/K
+                      |                               |
+                      +---------------+---------------+
+                                      |
+                         same split/collapse/flip
+                         same CGAL relaxation
+                         same CGAL projection
 ```
 
-## Why this architecture?
-
-The immediate goal is to remove custom split/collapse/connectivity maintenance as a confounding source of instability. Later experiments can compare RAR, CSF, and new sizing fields while keeping exactly the same CGAL remeshing backend.
+This is the useful comparison for the current stage: change the field, hold the local remeshing implementation fixed.
 
 ## Next phase
 
-- custom paper-oriented `RARSizingField`
-- curvature/sizing-field export for visualization
-- constrained feature/boundary handling
-- edge-length/target-length statistics
-- problem-case regression tests
+1. compile and regression-test `--field rar` on the Windows/CGAL 6.1.1 target;
+2. export per-vertex `curvature` and `target_length` for visualization;
+3. compare CGAL-Adaptive and RAR fields on the same difficult meshes;
+4. implement RAR Eq. (6) tangential relaxation as a separate mode;
+5. add feature/boundary constraints after the smooth-surface baseline is stable.
