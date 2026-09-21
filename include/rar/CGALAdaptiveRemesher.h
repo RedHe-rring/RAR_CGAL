@@ -47,7 +47,7 @@ inline void run_cgal_adaptive_remeshing(
         mesh
     );
 
-    if (!cfg.export_field_prefix.empty()) {
+    if (cfg.export_field && !cfg.export_field_prefix.empty()) {
         using PrincipalCurvatures =
             PMP::Principal_curvatures_and_directions<Kernel>;
 
