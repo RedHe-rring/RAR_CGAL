@@ -24,7 +24,6 @@ void print_usage(const char* exe) {
     std::cerr
         << "Usage:\n  " << exe
         << " <input_mesh> [output_mesh] [options]\n\n"
-        << "Options:\n"
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and all remeshing parameters.\n\n"
         << "Options:\n"
