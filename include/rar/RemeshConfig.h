@@ -22,6 +22,7 @@ inline const char* field_type_name(const FieldType type) {
 struct RemeshConfig {
     std::string input_path;
     std::string output_path;
+    std::string export_field_prefix;
 
     FieldType field_type = FieldType::CGALAdaptive;
 
