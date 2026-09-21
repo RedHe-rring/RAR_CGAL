@@ -17,8 +17,6 @@ inline std::string filename_number(const double value) {
     std::string s = oss.str();
     std::replace(s.begin(), s.end(), '.', 'p');
 
-    // Keep scientific notation readable and filename-safe:
-    // 1e-05 -> 1em05, 1e+05 -> 1ep05.
     std::string out;
     out.reserve(s.size());
     for (const char ch : s) {
@@ -33,15 +31,10 @@ inline std::string filename_number(const double value) {
     return out;
 }
 
-inline std::string make_auto_output_path(
+inline std::string make_parameterized_stem(
     const RemeshConfig& cfg)
 {
     const std::filesystem::path input(cfg.input_path);
-
-    std::string extension = input.extension().string();
-    if (extension.empty()) {
-        extension = ".ply";
-    }
 
     const std::string stem =
         input.stem().empty()
@@ -57,10 +50,36 @@ inline std::string make_auto_output_path(
         << "__lmax-" << filename_number(cfg.max_edge_length)
         << "__it-" << cfg.iterations
         << "__relax-" << cfg.relaxation_steps
-        << "__proj-" << (cfg.do_project ? "on" : "off")
-        << extension;
+        << "__proj-" << (cfg.do_project ? "on" : "off");
 
-    return (input.parent_path() / name.str()).string();
+    return name.str();
+}
+
+inline std::string make_auto_output_path(
+    const RemeshConfig& cfg)
+{
+    const std::filesystem::path input(cfg.input_path);
+
+    std::string extension = input.extension().string();
+    if (extension.empty()) {
+        extension = ".ply";
+    }
+
+    return (
+        input.parent_path()
+        / (make_parameterized_stem(cfg) + extension)
+    ).string();
+}
+
+inline std::string make_auto_field_prefix(
+    const RemeshConfig& cfg)
+{
+    const std::filesystem::path input(cfg.input_path);
+
+    return (
+        input.parent_path()
+        / make_parameterized_stem(cfg)
+    ).string();
 }
 
 } // namespace rar
