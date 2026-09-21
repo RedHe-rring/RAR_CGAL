@@ -74,11 +74,22 @@ inline std::string make_auto_output_path(
 inline std::string make_auto_field_prefix(
     const RemeshConfig& cfg)
 {
-    const std::filesystem::path input(cfg.input_path);
+    const std::filesystem::path output(cfg.output_path);
 
+    const std::string output_stem =
+        output.stem().empty()
+            ? std::string("remesh")
+            : output.stem().string();
+
+    // Keep diagnostic artifacts inside a folder named after
+    // the output mesh, e.g.:
+    // result.obj
+    // result/field.ply
+    // result/field.csv
     return (
-        input.parent_path()
-        / make_parameterized_stem(cfg)
+        output.parent_path()
+        / output_stem
+        / "field"
     ).string();
 }
 
