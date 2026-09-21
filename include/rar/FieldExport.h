@@ -31,8 +31,8 @@ void write_field_diagnostics(
             prefix_path.parent_path());
     }
 
-    const std::string csv_path = prefix + "_field.csv";
-    const std::string ply_path = prefix + "_field.ply";
+    const std::string csv_path = prefix + ".csv";
+    const std::string ply_path = prefix + ".ply";
 
     std::map<Mesh::Vertex_index, std::size_t> vertex_ids;
     std::size_t next_id = 0;
