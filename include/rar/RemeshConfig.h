@@ -23,6 +23,7 @@ struct RemeshConfig {
     std::string input_path;
     std::string output_path;
     std::string export_field_prefix;
+    bool output_path_auto = false;
 
     FieldType field_type = FieldType::CGALAdaptive;
 
