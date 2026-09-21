@@ -24,7 +24,7 @@ inline RARFieldStats run_rar_field_cgal_remeshing(
 
     const RARFieldStats initial_stats = sizing_field.stats();
 
-    if (!cfg.export_field_prefix.empty()) {
+    if (cfg.export_field && !cfg.export_field_prefix.empty()) {
         write_field_diagnostics(
             mesh,
             cfg.export_field_prefix,
