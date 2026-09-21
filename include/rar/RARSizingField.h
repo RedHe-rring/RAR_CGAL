@@ -174,6 +174,14 @@ public:
         return stats_;
     }
 
+    double curvature(const vertex_descriptor v) const {
+        return curvature_map_[v];
+    }
+
+    double target_length(const vertex_descriptor v) const {
+        return sizing_map_[v];
+    }
+
 private:
     static double vector_norm(const Vector_3& v) {
         return std::sqrt(CGAL::to_double(v.squared_length()));
