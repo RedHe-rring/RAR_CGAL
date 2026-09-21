@@ -54,14 +54,15 @@ int main() {
         auto_name ==
         "sample__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj");
 
-    const std::string auto_field_prefix =
-        std::filesystem::path(
-            rar::make_auto_field_prefix(naming))
-            .filename()
-            .string();
+    naming.output_path = rar::make_auto_output_path(naming);
+
+    const std::filesystem::path auto_field_prefix =
+        rar::make_auto_field_prefix(naming);
 
     assert(
-        auto_field_prefix ==
+        auto_field_prefix.filename().string() == "field");
+    assert(
+        auto_field_prefix.parent_path().filename().string() ==
         "sample__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on");
 
     assert(naming.export_field);
