@@ -109,6 +109,55 @@ build\Release\rar_cgal.exe input.obj output_no_project.obj ^
 
 The RAR mode prints the initial curvature and target-length min/mean/max statistics to make abnormal fields easier to detect.
 
+## Exporting the initial fields
+
+Both adaptive modes can export the **pre-remeshing** curvature and target-length fields:
+
+```bat
+build\Release\rar_cgal.exe input.obj output_cgal.obj ^
+  --field cgal-adaptive ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --export-field diagnostics/cgal
+
+build\Release\rar_cgal.exe input.obj output_rar.obj ^
+  --field rar ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --export-field diagnostics/rar
+```
+
+Each command produces:
+
+```text
+diagnostics/cgal_field.csv
+diagnostics/cgal_field.ply
+
+diagnostics/rar_field.csv
+diagnostics/rar_field.ply
+```
+
+The CSV columns are:
+
+```text
+vertex_id,x,y,z,curvature,target_length
+```
+
+The PLY keeps the original triangle connectivity and stores two scalar vertex properties:
+
+```text
+curvature
+target_length
+```
+
+For `cgal-adaptive`, the exported curvature is exactly the quantity used by CGAL's sizing formula: the maximum absolute value of the principal curvatures returned by `interpolated_corrected_curvatures()`.
+
+For `rar`, the exported curvature is the cotangent / mixed-Voronoi estimate used by our RAR sizing implementation.
+
+This makes the two fields directly comparable on the same input vertices before any split/collapse operation changes the mesh.
+
 ## Architecture
 
 ```text
@@ -130,8 +179,8 @@ This is the useful comparison for the current stage: change the field, hold the 
 
 ## Next phase
 
-1. compile and regression-test `--field rar` on the Windows/CGAL 6.1.1 target;
-2. export per-vertex `curvature` and `target_length` for visualization;
-3. compare CGAL-Adaptive and RAR fields on the same difficult meshes;
+1. compile and regression-test `--field rar` and field export on the Windows/CGAL 6.1.1 target;
+2. visualize `curvature` and `target_length` for CGAL-Adaptive vs RAR on the same difficult meshes;
+3. add edge `length / target_length` distribution statistics;
 4. implement RAR Eq. (6) tangential relaxation as a separate mode;
 5. add feature/boundary constraints after the smooth-surface baseline is stable.
