@@ -9,6 +9,9 @@ green -> yellow -> red heatmap.
 
 By default, the scalar range is the full [min, max] range of the selected
 property (0th to 100th percentile, i.e. no percentile clipping).
+
+If the output path is omitted, a parameter-aware filename is generated from
+the input field filename plus the visualization settings.
 """
 
 from __future__ import annotations
@@ -48,6 +51,45 @@ def heat_color(t: float) -> Tuple[int, int, int]:
             )
 
     return stops[-1][1]
+
+
+def filename_number(value: float) -> str:
+    """Encode a number in the same filename-friendly style as the C++ tool."""
+    s = format(value, ".10g").replace(".", "p")
+
+    out = []
+    for ch in s:
+        if ch == "-":
+            out.append("m")
+        elif ch == "+":
+            out.append("p")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def make_auto_output_path(
+    input_path: Path,
+    property_name: str,
+    invert: bool,
+    lo: float,
+    hi: float,
+) -> Path:
+    safe_property = "".join(
+        ch if ch.isalnum() or ch in {"_", "-"} else "-"
+        for ch in property_name
+    )
+
+    name = (
+        f"{input_path.stem}"
+        f"__color-{safe_property}"
+        f"__invert-{'on' if invert else 'off'}"
+        f"__vmin-{filename_number(lo)}"
+        f"__vmax-{filename_number(hi)}"
+        ".ply"
+    )
+
+    return input_path.with_name(name)
 
 
 def parse_ascii_ply(
@@ -157,7 +199,7 @@ def scalar_range(
 def rewrite_vertex_header_with_rgb(
     header: Sequence[str],
     vertex_properties: Sequence[str],
-) -> Tuple[List[str], List[str]]:
+) -> List[str]:
     existing_rgb = STANDARD_RGB_PROPERTIES.intersection(
         vertex_properties
     )
@@ -203,23 +245,17 @@ def rewrite_vertex_header_with_rgb(
 
         new_header.append(line)
 
-    kept_properties = [
-        name for name in vertex_properties
-        if name not in STANDARD_RGB_PROPERTIES
-    ]
-    kept_properties.extend(["red", "green", "blue"])
-
-    return new_header, kept_properties
+    return new_header
 
 
 def colorize_ply(
     input_path: Path,
-    output_path: Path,
+    output_path: Path | None,
     property_name: str,
     invert: bool,
     explicit_min: float | None,
     explicit_max: float | None,
-) -> None:
+) -> Path:
     (
         header,
         tail,
@@ -253,16 +289,16 @@ def colorize_ply(
         explicit_max,
     )
 
-    rgb_indices = {
-        name: (
-            vertex_properties.index(name)
-            if name in vertex_properties
-            else None
+    if output_path is None:
+        output_path = make_auto_output_path(
+            input_path=input_path,
+            property_name=property_name,
+            invert=invert,
+            lo=lo,
+            hi=hi,
         )
-        for name in STANDARD_RGB_PROPERTIES
-    }
 
-    new_header, _ = rewrite_vertex_header_with_rgb(
+    new_header = rewrite_vertex_header_with_rgb(
         header,
         vertex_properties,
     )
@@ -312,6 +348,8 @@ def colorize_ply(
     print(f"Range:    [{lo}, {hi}]")
     print(f"Invert:   {invert}")
 
+    return output_path
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -329,7 +367,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "output",
         type=Path,
-        help="Output ASCII PLY file.",
+        nargs="?",
+        default=None,
+        help=(
+            "Optional output PLY. If omitted, a parameter-aware "
+            "filename is generated beside the input file."
+        ),
     )
     parser.add_argument(
         "--property",
