@@ -249,7 +249,7 @@ private:
             const Point_3& pk = mesh.point(vk);
 
             const double local_area = CGAL::to_double(
-                CGAL::Weights::mixed_voronoi_area(pj, pi, pk));
+                CGAL::Weights::mixed_voronoi_area(pi, pj, pk));
             if (std::isfinite(local_area) && local_area > 0.0) {
                 mixed_area += local_area;
             }
