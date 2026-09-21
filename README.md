@@ -158,6 +158,76 @@ For `rar`, the exported curvature is the cotangent / mixed-Voronoi estimate used
 
 This makes the two fields directly comparable on the same input vertices before any split/collapse operation changes the mesh.
 
+## Visualizing exported fields
+
+The repository includes:
+
+```text
+tools/colorize_ply.py
+```
+
+It maps one scalar vertex property in an ASCII PLY file to a
+blue -> cyan -> green -> yellow -> red heatmap while preserving the mesh faces.
+
+By default, it uses the full scalar range:
+
+```text
+minimum value -> blue
+maximum value -> red
+```
+
+There is no percentile clipping; this corresponds to the 0th-100th percentile range.
+
+Color the RAR target-length field:
+
+```bat
+python tools\colorize_ply.py ^
+  diagnostics\rar_field.ply ^
+  diagnostics\rar_target_length_rgb.ply ^
+  --property target_length
+```
+
+Color the RAR curvature field:
+
+```bat
+python tools\colorize_ply.py ^
+  diagnostics\rar_field.ply ^
+  diagnostics\rar_curvature_rgb.ply ^
+  --property curvature
+```
+
+Do the same for CGAL:
+
+```bat
+python tools\colorize_ply.py ^
+  diagnostics\cgal_field.ply ^
+  diagnostics\cgal_target_length_rgb.ply ^
+  --property target_length
+```
+
+Reverse the color direction when desired:
+
+```bat
+python tools\colorize_ply.py ^
+  diagnostics\rar_field.ply ^
+  diagnostics\rar_target_length_rgb_invert.ply ^
+  --property target_length ^
+  --invert
+```
+
+For direct side-by-side comparison, it is often better to force the same display range for both fields:
+
+```bat
+python tools\colorize_ply.py diagnostics\cgal_field.ply diagnostics\cgal_rgb.ply ^
+  --property target_length --min 0.001 --max 0.05
+
+python tools\colorize_ply.py diagnostics\rar_field.ply diagnostics\rar_rgb.ply ^
+  --property target_length --min 0.001 --max 0.05
+```
+
+Using the same `--min/--max` avoids a misleading visualization where two different
+numeric ranges are each independently stretched to the full heatmap.
+
 ## Architecture
 
 ```text
