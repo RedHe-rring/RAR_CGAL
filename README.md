@@ -142,7 +142,7 @@ the program writes the result next to the input mesh using a parameter-aware fil
 input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
 ```
 
-The automatic name currently records:
+The automatic mesh name and the default field basename both record:
 
 ```text
 field
@@ -159,32 +159,51 @@ Decimal points are encoded as `p` so filenames remain shell-friendly
 
 ## Exporting the initial fields
 
-Both adaptive modes can export the **pre-remeshing** curvature and target-length fields:
+Field export is **enabled by default** for both adaptive modes.
 
-```bat
-build\Release\rar_cgal.exe input.obj output_cgal.obj ^
-  --field cgal-adaptive ^
-  --epsilon 0.001 ^
-  --min-edge 0.001 ^
-  --max-edge 0.5 ^
-  --export-field diagnostics/cgal
-
-build\Release\rar_cgal.exe input.obj output_rar.obj ^
-  --field rar ^
-  --epsilon 0.001 ^
-  --min-edge 0.001 ^
-  --max-edge 0.5 ^
-  --export-field diagnostics/rar
-```
-
-Each command produces:
+If the input is `input.obj` and the remeshing parameters are:
 
 ```text
-diagnostics/cgal_field.csv
-diagnostics/cgal_field.ply
+field=rar
+epsilon=0.001
+min-edge=0.001
+max-edge=0.5
+iterations=5
+relax-steps=3
+projection=on
+```
 
-diagnostics/rar_field.csv
-diagnostics/rar_field.ply
+the mesh and field outputs share the same parameterized basename:
+
+```text
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on.obj
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.ply
+input__field-rar__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on_field.csv
+```
+
+You do not need to pass `--export-field`.
+
+To disable field export:
+
+```bat
+build\Release\rar_cgal.exe input.obj ^
+  --field rar ^
+  --no-export-field
+```
+
+To override only the field-output prefix manually:
+
+```bat
+build\Release\rar_cgal.exe input.obj ^
+  --field rar ^
+  --export-field diagnostics/custom_rar
+```
+
+which produces:
+
+```text
+diagnostics/custom_rar_field.csv
+diagnostics/custom_rar_field.ply
 ```
 
 The CSV columns are:
