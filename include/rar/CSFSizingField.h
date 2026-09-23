@@ -3,6 +3,7 @@
 #include "rar/Types.h"
 
 #include <CGAL/Kernel/global_functions_3.h>
+#include <CGAL/boost/graph/helpers.h>
 #include <CGAL/boost/graph/iterator.h>
 #include <CGAL/number_utils.h>
 #include <CGAL/squared_distance_3.h>
@@ -15,6 +16,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <utility>
