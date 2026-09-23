@@ -2,6 +2,7 @@
 
 #include "rar/Types.h"
 
+#include <cstddef>
 #include <optional>
 
 namespace rar {
