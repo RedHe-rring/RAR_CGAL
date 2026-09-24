@@ -6,16 +6,11 @@
 #include <CGAL/number_utils.h>
 #include <CGAL/squared_distance_3.h>
 
-#include <Eigen/Sparse>
-#include <Eigen/SparseCholesky>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <iterator>
 #include <limits>
-#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -28,29 +23,33 @@ using Halfedge = CSFSizingField::halfedge_descriptor;
 using Vector = Kernel::Vector_3;
 using DenseMap = Mesh::Property_map<Vertex, std::size_t>;
 
-struct Neighbor {
-    std::size_t vertex = 0;
-    double weight = 0.0;
-};
-
-using Adjacency = std::vector<std::vector<Neighbor>>;
-
-constexpr double kMinWeight = 1e-4;
 constexpr double kMinEdgeLength = 1e-12;
+constexpr int kPrimarySmoothSteps = 3;
+constexpr int kNeighborAverageSteps = 3;
+constexpr double kLambda = 0.5;
 constexpr int kHistogramBins = 40;
 constexpr std::array<double, 5> kMultipliers{
     1.8, 1.4, 1.0, 0.8, 0.6};
+
+struct AuthorTopology {
+    std::vector<std::array<std::size_t, 2>> face_pairs_flat;
+    std::vector<std::vector<std::size_t>> neighbor_entries;
+};
 
 double vector_norm(const Vector& v) {
     return std::sqrt(CGAL::to_double(v.squared_length()));
 }
 
-Vector normalized(const Vector& v) {
+Vector unit_vector(const Vector& v) {
     const double n = vector_norm(v);
-    if (!(n > 1e-14) || !std::isfinite(n)) {
+    if (!(n > 0.0) || !std::isfinite(n)) {
         return Vector(0.0, 0.0, 0.0);
     }
     return v / n;
+}
+
+bool is_zero_vector(const Vector& v) {
+    return CGAL::to_double(v.squared_length()) == 0.0;
 }
 
 double edge_length(Vertex a, Vertex b, const Mesh& mesh) {
@@ -58,27 +57,68 @@ double edge_length(Vertex a, Vertex b, const Mesh& mesh) {
         CGAL::squared_distance(mesh.point(a), mesh.point(b))));
 }
 
-double cotangent_at(
-    const Point& center,
-    const Point& a,
-    const Point& b)
+double triangle_area(
+    const Point& p0,
+    const Point& p1,
+    const Point& p2)
 {
-    const Vector u(center, a);
-    const Vector v(center, b);
-    const Vector cross = CGAL::cross_product(u, v);
-    const double denom = vector_norm(cross);
-    if (!(denom > 1e-14)) {
-        return 0.0;
-    }
-    return CGAL::to_double(u * v) / denom;
+    return 0.5 * vector_norm(
+        CGAL::cross_product(Vector(p0, p1), Vector(p0, p2)));
 }
 
-std::vector<Vector> compute_vertex_normals(
+AuthorTopology build_author_topology(
     const Mesh& mesh,
     const DenseMap& dense_index)
 {
-    std::vector<Vector> normals(
+    AuthorTopology topology;
+    topology.neighbor_entries.resize(num_vertices(mesh));
+
+    for (const auto f : faces(mesh)) {
+        const Halfedge h = halfedge(f, mesh);
+        const Vertex v0 = source(h, mesh);
+        const Vertex v1 = target(h, mesh);
+        const Vertex v2 = target(next(h, mesh), mesh);
+
+        const std::size_t i0 = dense_index[v0];
+        const std::size_t i1 = dense_index[v1];
+        const std::size_t i2 = dense_index[v2];
+
+        // Match the author's pointNeighbor construction exactly:
+        // v0 -> (v1,v2), v1 -> (v2,v0), v2 -> (v0,v1).
+        topology.neighbor_entries[i0].push_back(i1);
+        topology.neighbor_entries[i0].push_back(i2);
+
+        topology.neighbor_entries[i1].push_back(i2);
+        topology.neighbor_entries[i1].push_back(i0);
+
+        topology.neighbor_entries[i2].push_back(i0);
+        topology.neighbor_entries[i2].push_back(i1);
+    }
+
+    return topology;
+}
+
+std::vector<std::size_t> unique_neighbors_in_author_order(
+    const std::vector<std::size_t>& entries)
+{
+    std::vector<std::size_t> result;
+    result.reserve(entries.size());
+
+    for (const std::size_t v : entries) {
+        if (std::find(result.begin(), result.end(), v) == result.end()) {
+            result.push_back(v);
+        }
+    }
+    return result;
+}
+
+std::vector<Vector> compute_author_vertex_normals(
+    const Mesh& mesh,
+    const DenseMap& dense_index)
+{
+    std::vector<Vector> weighted_sum(
         num_vertices(mesh), Vector(0.0, 0.0, 0.0));
+    std::vector<double> area_sum(num_vertices(mesh), 0.0);
 
     for (const auto f : faces(mesh)) {
         const Halfedge h = halfedge(f, mesh);
@@ -90,360 +130,271 @@ std::vector<Vector> compute_vertex_normals(
         const Point& p1 = mesh.point(v1);
         const Point& p2 = mesh.point(v2);
 
-        const Vector face_normal = CGAL::cross_product(
-            Vector(p0, p1), Vector(p0, p2));
+        const Vector face_normal = unit_vector(
+            CGAL::cross_product(Vector(p0, p1), Vector(p0, p2)));
+        const double area = triangle_area(p0, p1, p2);
 
-        normals[dense_index[v0]] =
-            normals[dense_index[v0]] + face_normal;
-        normals[dense_index[v1]] =
-            normals[dense_index[v1]] + face_normal;
-        normals[dense_index[v2]] =
-            normals[dense_index[v2]] + face_normal;
+        for (const Vertex v : {v0, v1, v2}) {
+            const std::size_t i = dense_index[v];
+            weighted_sum[i] = weighted_sum[i] + face_normal * area;
+            area_sum[i] += area;
+        }
     }
 
-    for (Vector& n : normals) {
-        n = normalized(n);
+    // Important: the author's MeshGeometric_Normal_Point() returns
+    // the area-weighted average directly. It does NOT renormalize
+    // the final vertex normal.
+    for (std::size_t i = 0; i < weighted_sum.size(); ++i) {
+        if (area_sum[i] > 0.0) {
+            weighted_sum[i] = weighted_sum[i] / area_sum[i];
+        }
     }
-    return normals;
+
+    return weighted_sum;
 }
 
-double normal_angle(const Vector& a, const Vector& b) {
+double author_normal_angle(const Vector& a, const Vector& b) {
     double cosine = CGAL::to_double(a * b);
     cosine = (std::max)(-1.0, (std::min)(1.0, cosine));
     return std::acos(cosine);
 }
 
-std::vector<double> compute_raw_curvature(
-    const Mesh& mesh,
-    const DenseMap& dense_index,
-    const std::vector<Vector>& normals)
+double author_inner_angle(
+    std::size_t center,
+    std::size_t p2,
+    std::size_t p3,
+    const std::vector<Vertex>& vertices_dense,
+    const Mesh& mesh)
 {
-    std::vector<double> curvature(num_vertices(mesh), 0.0);
+    const Point& pc = mesh.point(vertices_dense[center]);
+    const Point& pa = mesh.point(vertices_dense[p2]);
+    const Point& pb = mesh.point(vertices_dense[p3]);
 
-    for (const Vertex v : vertices(mesh)) {
-        double sum = 0.0;
-        std::size_t count = 0;
+    Vector a(pc, pa);
+    Vector b(pc, pb);
 
-        for (const Halfedge h :
-             CGAL::halfedges_around_target(v, mesh)) {
-            const Vertex n = source(h, mesh);
-            sum += normal_angle(
-                normals[dense_index[v]],
-                normals[dense_index[n]]);
-            ++count;
-        }
-
-        if (count > 0) {
-            curvature[dense_index[v]] =
-                sum / static_cast<double>(count);
-        }
+    const double an = vector_norm(a);
+    const double bn = vector_norm(b);
+    if (!(an > 0.0) || !(bn > 0.0)) {
+        return 0.0;
     }
 
-    return curvature;
+    a = a / an;
+    b = b / bn;
+
+    double cosine = CGAL::to_double(a * b);
+    cosine = (std::max)(-1.0, (std::min)(1.0, cosine));
+    return std::acos(cosine);
 }
 
-double positive_weight(double value) {
-    return std::isfinite(value) && value > 0.0
-        ? value
-        : kMinWeight;
-}
-
-Adjacency build_weight_graph(
-    const Mesh& mesh,
-    const DenseMap& dense_index)
+std::vector<double> compute_author_raw_curvature(
+    const AuthorTopology& topology,
+    const std::vector<Vector>& vertex_normals)
 {
-    Adjacency adjacency(num_vertices(mesh));
+    std::vector<double> raw(vertex_normals.size(), 0.0);
 
-    for (const auto e : edges(mesh)) {
-        const Halfedge h = halfedge(e, mesh);
-        const Vertex a = source(h, mesh);
-        const Vertex b = target(h, mesh);
-
-        double cot_sum = 0.0;
-
-        const auto accumulate_side = [&](Halfedge side) {
-            if (CGAL::is_border(side, mesh)) {
-                return;
-            }
-
-            const Vertex c = target(next(side, mesh), mesh);
-            cot_sum += cotangent_at(
-                mesh.point(c),
-                mesh.point(source(side, mesh)),
-                mesh.point(target(side, mesh)));
-        };
-
-        accumulate_side(h);
-        accumulate_side(opposite(h, mesh));
-
-        double weight = positive_weight(0.5 * cot_sum);
-
-        // Code-oriented CSF variant used in the AdaIso reproduction:
-        // cotangent weight additionally divided by edge length.
-        weight /= (std::max)(
-            edge_length(a, b, mesh), kMinEdgeLength);
-        weight = positive_weight(weight);
-
-        const std::size_t ia = dense_index[a];
-        const std::size_t ib = dense_index[b];
-        adjacency[ia].push_back({ib, weight});
-        adjacency[ib].push_back({ia, weight});
-    }
-
-    for (auto& neighbors : adjacency) {
-        std::sort(
-            neighbors.begin(),
-            neighbors.end(),
-            [](const Neighbor& lhs, const Neighbor& rhs) {
-                return lhs.vertex < rhs.vertex;
-            });
-    }
-
-    return adjacency;
-}
-
-std::vector<std::vector<std::size_t>>
-connected_components(const Adjacency& adjacency)
-{
-    std::vector<std::vector<std::size_t>> components;
-    std::vector<char> visited(adjacency.size(), 0);
-
-    for (std::size_t start = 0;
-         start < adjacency.size();
-         ++start) {
-        if (visited[start]) {
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        const auto& entries = topology.neighbor_entries[i];
+        if (entries.empty()) {
             continue;
         }
 
-        std::vector<std::size_t> component;
-        std::vector<std::size_t> stack{start};
-        visited[start] = 1;
+        double angle_sum = 0.0;
 
-        while (!stack.empty()) {
-            const std::size_t v = stack.back();
-            stack.pop_back();
-            component.push_back(v);
+        for (std::size_t j = 0; j + 1 < entries.size(); j += 2) {
+            const std::size_t p2 = entries[j];
+            const std::size_t p3 = entries[j + 1];
 
-            for (const Neighbor& n : adjacency[v]) {
-                if (!visited[n.vertex]) {
-                    visited[n.vertex] = 1;
-                    stack.push_back(n.vertex);
+            Vector p2n = vertex_normals[p2];
+            Vector p3n = vertex_normals[p3];
+
+            // Match the author's zero-normal fallback.
+            if (is_zero_vector(p2n)) {
+                p2n = p3n;
+            }
+            if (is_zero_vector(p3n)) {
+                p3n = p2n;
+            }
+
+            angle_sum += author_normal_angle(vertex_normals[i], p2n);
+            angle_sum += author_normal_angle(vertex_normals[i], p3n);
+        }
+
+        // The original code divides by pointNeighbor[i].size(),
+        // i.e. by the flattened face-pair entry count.
+        raw[i] = angle_sum / static_cast<double>(entries.size());
+    }
+
+    return raw;
+}
+
+struct AuthorWeights {
+    std::vector<std::vector<std::size_t>> neighbors;
+    std::vector<std::vector<double>> normalized;
+};
+
+AuthorWeights build_author_csf_weights(
+    const AuthorTopology& topology,
+    const std::vector<Vertex>& vertices_dense,
+    const Mesh& mesh)
+{
+    AuthorWeights result;
+    result.neighbors.resize(vertices_dense.size());
+    result.normalized.resize(vertices_dense.size());
+
+    for (std::size_t i = 0; i < vertices_dense.size(); ++i) {
+        const auto& entries = topology.neighbor_entries[i];
+        auto& neighbors = result.neighbors[i];
+        neighbors = unique_neighbors_in_author_order(entries);
+
+        std::vector<double> cotangent_weights(neighbors.size(), 0.0);
+        std::vector<double> distances(neighbors.size(), 0.0);
+
+        for (std::size_t j = 0; j < neighbors.size(); ++j) {
+            const std::size_t p2 = neighbors[j];
+
+            distances[j] = std::sqrt(CGAL::to_double(
+                CGAL::squared_distance(
+                    mesh.point(vertices_dense[i]),
+                    mesh.point(vertices_dense[p2]))));
+
+            for (std::size_t k = 0; k + 1 < entries.size(); k += 2) {
+                const std::size_t p21 = entries[k];
+                const std::size_t p22 = entries[k + 1];
+
+                if (p21 != p2 && p22 != p2) {
+                    continue;
                 }
-            }
-        }
 
-        std::sort(component.begin(), component.end());
-        components.push_back(std::move(component));
-    }
+                const std::size_t opposite =
+                    (p21 == p2) ? p22 : p21;
 
-    return components;
-}
+                const double angle = author_inner_angle(
+                    opposite,
+                    i,
+                    p2,
+                    vertices_dense,
+                    mesh);
 
-bool component_is_constant(
-    const std::vector<std::size_t>& component,
-    const std::vector<double>& values)
-{
-    double min_value = std::numeric_limits<double>::infinity();
-    double max_value = -std::numeric_limits<double>::infinity();
-
-    for (const std::size_t v : component) {
-        min_value = (std::min)(min_value, values[v]);
-        max_value = (std::max)(max_value, values[v]);
-    }
-
-    return max_value - min_value <= 1e-14;
-}
-
-std::vector<char> select_fixed_vertices(
-    const Adjacency& adjacency,
-    const std::vector<double>& values)
-{
-    std::vector<char> fixed(values.size(), 0);
-
-    for (const auto& component :
-         connected_components(adjacency)) {
-        if (component.empty()) {
-            continue;
-        }
-
-        if (component.size() <= 2 ||
-            component_is_constant(component, values)) {
-            for (const std::size_t v : component) {
-                fixed[v] = 1;
-            }
-            continue;
-        }
-
-        const auto vmax_it = std::max_element(
-            component.begin(),
-            component.end(),
-            [&](std::size_t lhs, std::size_t rhs) {
-                if (values[lhs] == values[rhs]) {
-                    return lhs > rhs;
+                double tan_value = std::tan(std::abs(angle));
+                if (tan_value < 0.1) {
+                    tan_value = 0.1;
                 }
-                return values[lhs] < values[rhs];
-            });
-        const std::size_t vmax = *vmax_it;
-
-        std::vector<char> excluded(values.size(), 0);
-        excluded[vmax] = 1;
-        for (const Neighbor& n : adjacency[vmax]) {
-            excluded[n.vertex] = 1;
-        }
-
-        const auto choose_min =
-            [&](bool respect_excluded)
-                -> std::optional<std::size_t> {
-                std::optional<std::size_t> best;
-                double best_value =
-                    std::numeric_limits<double>::infinity();
-
-                for (const std::size_t v : component) {
-                    if (v == vmax) {
-                        continue;
-                    }
-                    if (respect_excluded && excluded[v]) {
-                        continue;
-                    }
-                    if (!best ||
-                        values[v] < best_value ||
-                        (values[v] == best_value && v < *best)) {
-                        best = v;
-                        best_value = values[v];
-                    }
+                if (tan_value > 10.0) {
+                    tan_value = 10.0;
                 }
-                return best;
-            };
 
-        std::optional<std::size_t> vmin = choose_min(true);
-        if (!vmin) {
-            vmin = choose_min(false);
-        }
-        if (!vmin) {
-            throw std::runtime_error(
-                "CSF anchor selection failed");
-        }
-
-        fixed[vmax] = 1;
-        fixed[*vmin] = 1;
-    }
-
-    return fixed;
-}
-
-std::vector<double> solve_csf(
-    const Adjacency& adjacency,
-    const std::vector<double>& initial)
-{
-    if (adjacency.size() != initial.size()) {
-        throw std::runtime_error(
-            "CSF solve input size mismatch");
-    }
-    if (initial.empty()) {
-        return initial;
-    }
-
-    for (const double value : initial) {
-        if (!std::isfinite(value)) {
-            throw std::runtime_error(
-                "CSF initial curvature is not finite");
-        }
-    }
-
-    const std::vector<char> fixed =
-        select_fixed_vertices(adjacency, initial);
-
-    std::vector<int> free_index(initial.size(), -1);
-    int free_count = 0;
-
-    for (std::size_t i = 0; i < initial.size(); ++i) {
-        if (!fixed[i]) {
-            free_index[i] = free_count++;
-        }
-    }
-
-    if (free_count == 0) {
-        return initial;
-    }
-
-    using SparseMatrix = Eigen::SparseMatrix<double>;
-    using Triplet = Eigen::Triplet<double>;
-
-    std::vector<Triplet> triplets;
-    triplets.reserve(
-        static_cast<std::size_t>(free_count) * 8);
-
-    Eigen::VectorXd rhs = Eigen::VectorXd::Zero(free_count);
-
-    for (std::size_t i = 0; i < adjacency.size(); ++i) {
-        const int row = free_index[i];
-        if (row < 0) {
-            continue;
-        }
-
-        double diagonal = 0.0;
-
-        for (const Neighbor& n : adjacency[i]) {
-            diagonal += n.weight;
-            const int col = free_index[n.vertex];
-
-            if (col >= 0) {
-                triplets.emplace_back(row, col, -n.weight);
-            } else {
-                rhs[row] += n.weight * initial[n.vertex];
+                cotangent_weights[j] += 1.0 / tan_value;
             }
         }
 
-        if (!(diagonal > 0.0) || !std::isfinite(diagonal)) {
-            throw std::runtime_error(
-                "CSF vertex has no positive Laplace diagonal");
+        double sum_weight = 0.0;
+        for (std::size_t j = 0; j < neighbors.size(); ++j) {
+            const double distance =
+                (std::max)(distances[j], kMinEdgeLength);
+            sum_weight += cotangent_weights[j] / distance;
         }
 
-        triplets.emplace_back(row, row, diagonal);
-    }
+        auto& normalized = result.normalized[i];
+        normalized.assign(neighbors.size(), 0.0);
 
-    SparseMatrix matrix(free_count, free_count);
-    matrix.setFromTriplets(triplets.begin(), triplets.end());
-    matrix.makeCompressed();
-
-    Eigen::SimplicialLDLT<SparseMatrix> solver;
-    solver.compute(matrix);
-    if (solver.info() != Eigen::Success) {
-        throw std::runtime_error(
-            "CSF Laplace factorization failed");
-    }
-
-    const Eigen::VectorXd solution = solver.solve(rhs);
-    if (solver.info() != Eigen::Success ||
-        !solution.allFinite()) {
-        throw std::runtime_error(
-            "CSF Laplace solve failed");
-    }
-
-    std::vector<double> result = initial;
-    for (std::size_t i = 0; i < free_index.size(); ++i) {
-        const int idx = free_index[i];
-        if (idx >= 0) {
-            result[i] = solution[idx];
+        if (sum_weight > 0.0 && std::isfinite(sum_weight)) {
+            for (std::size_t j = 0; j < neighbors.size(); ++j) {
+                const double distance =
+                    (std::max)(distances[j], kMinEdgeLength);
+                normalized[j] =
+                    (cotangent_weights[j] / distance) / sum_weight;
+            }
         }
     }
 
     return result;
 }
 
-std::size_t clamp_index(long long index, std::size_t size) {
-    if (size == 0) {
-        return 0;
+std::vector<double> author_primary_csf_smoothing(
+    const std::vector<double>& raw,
+    const AuthorWeights& weights)
+{
+    std::vector<double> smooth = raw;
+
+    // Match MeshGeometric_Harmonic_N_Value(): three in-place
+    // Gauss-Seidel-like sweeps with lambda = 0.5.
+    for (int step = 0; step < kPrimarySmoothSteps; ++step) {
+        for (std::size_t i = 0; i < smooth.size(); ++i) {
+            const auto& neighbors = weights.neighbors[i];
+            const auto& normalized = weights.normalized[i];
+
+            if (neighbors.empty()) {
+                continue;
+            }
+
+            double neighbor_value = 0.0;
+            for (std::size_t j = 0; j < neighbors.size(); ++j) {
+                neighbor_value +=
+                    normalized[j] * smooth[neighbors[j]];
+            }
+
+            smooth[i] =
+                smooth[i] * kLambda +
+                neighbor_value * (1.0 - kLambda);
+        }
     }
 
-    const long long hi =
-        static_cast<long long>(size - 1);
-
-    return static_cast<std::size_t>(
-        (std::max)(0LL, (std::min)(index, hi)));
+    return smooth;
 }
 
-std::vector<double> histogram_multipliers(
+std::vector<double> author_secondary_neighbor_average(
+    const std::vector<double>& input,
+    const AuthorTopology& topology,
+    const std::vector<Vertex>& vertices_dense,
+    const Mesh& mesh)
+{
+    std::vector<double> values = input;
+
+    // Match MeshOptimization_Apt_L_init(): three synchronous
+    // neighbor averages, weighted by edge length.
+    for (int step = 0; step < kNeighborAverageSteps; ++step) {
+        const std::vector<double> old = values;
+
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            const std::vector<std::size_t> neighbors =
+                unique_neighbors_in_author_order(
+                    topology.neighbor_entries[i]);
+
+            if (neighbors.empty()) {
+                continue;
+            }
+
+            double weight_sum = 0.0;
+            std::vector<double> weights(neighbors.size(), 0.0);
+
+            for (std::size_t j = 0; j < neighbors.size(); ++j) {
+                weights[j] = std::sqrt(CGAL::to_double(
+                    CGAL::squared_distance(
+                        mesh.point(vertices_dense[i]),
+                        mesh.point(vertices_dense[neighbors[j]]))));
+                weight_sum += weights[j];
+            }
+
+            if (!(weight_sum > 0.0)) {
+                continue;
+            }
+
+            double averaged = 0.0;
+            for (std::size_t j = 0; j < neighbors.size(); ++j) {
+                averaged +=
+                    (weights[j] / weight_sum) *
+                    old[neighbors[j]];
+            }
+
+            values[i] = averaged;
+        }
+    }
+
+    return values;
+}
+
+std::vector<double> author_histogram_multipliers(
     const std::vector<double>& curvature)
 {
     std::vector<double> result(curvature.size(), 1.0);
@@ -452,80 +403,78 @@ std::vector<double> histogram_multipliers(
         return result;
     }
 
-    const auto [min_it, max_it] =
-        std::minmax_element(curvature.begin(), curvature.end());
-    const double min_value = *min_it;
-    const double max_value = *max_it;
-
-    if (std::abs(max_value - min_value) <= 1e-14) {
-        return result;
-    }
-
-    const double width =
-        (max_value - min_value) /
-        static_cast<double>(kHistogramBins);
-
-    std::array<int, kHistogramBins> counts{};
-    for (const double value : curvature) {
-        int bin = static_cast<int>(
-            std::floor((value - min_value) / width));
-        bin = (std::max)(
-            0, (std::min)(bin, kHistogramBins - 1));
-        ++counts[static_cast<std::size_t>(bin)];
-    }
-
-    const int max_count =
-        *std::max_element(counts.begin(), counts.end());
-
-    std::vector<int> max_bins;
-    for (int i = 0; i < kHistogramBins; ++i) {
-        if (counts[static_cast<std::size_t>(i)] == max_count) {
-            max_bins.push_back(i);
-        }
-    }
-
-    const int base_bin = max_bins[max_bins.size() / 2];
-    const double base =
-        min_value +
-        (static_cast<double>(base_bin) + 0.5) * width;
-
     std::vector<double> sorted = curvature;
     std::sort(sorted.begin(), sorted.end());
 
-    auto lower =
-        std::lower_bound(sorted.begin(), sorted.end(), base);
+    const double min_value = sorted.front();
+    const double max_value = sorted.back();
+    const double unit_step =
+        (max_value - min_value) /
+        static_cast<double>(kHistogramBins);
 
-    long long idx = static_cast<long long>(
-        std::distance(sorted.begin(), lower));
+    std::array<double, kHistogramBins> histogram{};
 
-    idx = (std::max)(
-        1LL,
-        (std::min)(
-            idx,
-            static_cast<long long>(sorted.size() - 1)));
+    // Match the author's inclusive [lower, upper] tests.
+    for (int i = 0; i < kHistogramBins; ++i) {
+        const double lower =
+            min_value + unit_step * static_cast<double>(i);
+        const double upper =
+            min_value + unit_step * static_cast<double>(i + 1);
 
-    const long long unit_right = (std::max)(
-        1LL,
-        (static_cast<long long>(sorted.size()) - idx) / 5LL);
+        for (const double value : sorted) {
+            if (value <= upper && value >= lower) {
+                histogram[static_cast<std::size_t>(i)] += 1.0;
+            }
+        }
+    }
 
-    const std::array<double, 4> cuts{
-        sorted[clamp_index((idx / 5LL) * 2LL, sorted.size())],
-        sorted[clamp_index((idx / 5LL) * 4LL, sorted.size())],
-        sorted[clamp_index(idx + unit_right, sorted.size())],
-        sorted[clamp_index(
-            idx + unit_right * 3LL, sorted.size())]
-    };
+    int his_max = 0;
+    double index_sum = -1.0;
+    for (int i = 0; i < kHistogramBins; ++i) {
+        if (histogram[static_cast<std::size_t>(i)] > index_sum) {
+            his_max = i;
+            index_sum = histogram[static_cast<std::size_t>(i)];
+        }
+    }
+
+    const double lower_mid =
+        min_value + unit_step * static_cast<double>(his_max);
+    const double upper_mid =
+        min_value + unit_step * static_cast<double>(his_max + 1);
+    const double c_base = (lower_mid + upper_mid) / 2.0;
+
+    std::size_t index_c_base = 0;
+    for (std::size_t i = 1; i < sorted.size(); ++i) {
+        if (sorted[i - 1] <= c_base && c_base <= sorted[i]) {
+            index_c_base = i;
+            break;
+        }
+    }
+
+    const std::size_t max_cu = sorted.size();
+    const std::size_t unit_right =
+        (max_cu - index_c_base) / 5;
+
+    const auto safe_index =
+        [max_cu](std::size_t i) {
+            return (std::min)(i, max_cu - 1);
+        };
+
+    const double li1 = sorted[safe_index((index_c_base / 5) * 2)];
+    const double li2 = sorted[safe_index((index_c_base / 5) * 4)];
+    const double li3 = sorted[safe_index(index_c_base + unit_right)];
+    const double li4 = sorted[safe_index(index_c_base + unit_right * 3)];
 
     for (std::size_t i = 0; i < curvature.size(); ++i) {
         const double c = curvature[i];
 
-        if (c < cuts[0]) {
+        if (c < li1) {
             result[i] = kMultipliers[0];
-        } else if (c < cuts[1]) {
+        } else if (c < li2 && c >= li1) {
             result[i] = kMultipliers[1];
-        } else if (c < cuts[2]) {
+        } else if (c < li3 && c >= li2) {
             result[i] = kMultipliers[2];
-        } else if (c < cuts[3]) {
+        } else if (c < li4 && c >= li3) {
             result[i] = kMultipliers[3];
         } else {
             result[i] = kMultipliers[4];
@@ -543,10 +492,7 @@ double mean_edge_length(const Mesh& mesh) {
     double sum = 0.0;
     for (const auto e : edges(mesh)) {
         const Halfedge h = halfedge(e, mesh);
-        sum += edge_length(
-            source(h, mesh),
-            target(h, mesh),
-            mesh);
+        sum += edge_length(source(h, mesh), target(h, mesh), mesh);
     }
 
     return sum / static_cast<double>(num_edges(mesh));
@@ -749,33 +695,43 @@ void CSFSizingField::compute_initial_field(Mesh& mesh) {
         dense_vertices.push_back(v);
     }
 
-    const std::vector<Vector> normals =
-        compute_vertex_normals(mesh, dense_index);
+    const AuthorTopology topology =
+        build_author_topology(mesh, dense_index);
+
+    const std::vector<Vector> vertex_normals =
+        compute_author_vertex_normals(mesh, dense_index);
 
     const std::vector<double> raw =
-        compute_raw_curvature(
-            mesh, dense_index, normals);
+        compute_author_raw_curvature(topology, vertex_normals);
 
-    const Adjacency adjacency =
-        build_weight_graph(mesh, dense_index);
+    const AuthorWeights weights =
+        build_author_csf_weights(
+            topology, dense_vertices, mesh);
+
+    const std::vector<double> primary_smooth =
+        author_primary_csf_smoothing(raw, weights);
 
     const std::vector<double> smooth =
-        solve_csf(adjacency, raw);
+        author_secondary_neighbor_average(
+            primary_smooth,
+            topology,
+            dense_vertices,
+            mesh);
 
     const std::vector<double> multipliers =
-        histogram_multipliers(smooth);
+        author_histogram_multipliers(smooth);
 
-    std::vector<double> sizing(
-        stats_.vertex_count, 0.0);
+    std::vector<double> sizing(stats_.vertex_count, 0.0);
 
-    for (std::size_t i = 0;
-         i < dense_vertices.size();
-         ++i) {
+    for (std::size_t i = 0; i < dense_vertices.size(); ++i) {
         const vertex_descriptor v = dense_vertices[i];
 
         raw_curvature_map_[v] = raw[i];
         smoothed_curvature_map_[v] = smooth[i];
 
+        // The original code first assigns multiplier * L_ave,
+        // then multiplies all local targets by meshScale.
+        // This is algebraically identical.
         const double target = (std::max)(
             kMinEdgeLength,
             stats_.base_edge_length *
