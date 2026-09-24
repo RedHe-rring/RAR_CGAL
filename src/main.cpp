@@ -380,6 +380,15 @@ int main(
         const auto end =
             std::chrono::steady_clock::now();
 
+        // CGAL edge collapses can leave Surface_mesh descriptors
+        // sparse until garbage is collected. Some mesh writers
+        // (notably PLY readers downstream such as MeshLab) expect
+        // face indices to refer to a compact 0..N-1 vertex array.
+        // Compact the mesh before exporting the final result.
+        if (mesh.has_garbage()) {
+            mesh.collect_garbage();
+        }
+
         print_mesh_stats(mesh, "Output");
 
         const double seconds =
