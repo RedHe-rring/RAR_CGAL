@@ -16,6 +16,7 @@ option(
 
 add_executable(rar_cgal
     src/main.cpp
+    src/CSFSizingField.cpp
 )
 
 target_include_directories(rar_cgal PRIVATE include)

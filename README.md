@@ -4,10 +4,11 @@ A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing 
 
 ## Implemented modes
 
-The executable now keeps two adaptive sizing modes side by side:
+The executable now keeps three adaptive sizing modes side by side:
 
 - `cgal-adaptive`: CGAL 6.1.x `Adaptive_sizing_field`.
 - `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
+- `csf`: code-oriented curvature-smoothed-field sizing (Lv et al.), passed to the same CGAL backend.
 
 This separation is intentional. It allows direct experiments on the sizing field without changing split/collapse/flip infrastructure.
 
@@ -45,6 +46,30 @@ Implementation details:
 The local mesh operations are still performed by CGAL.
 
 **Important:** this mode is currently named `RAR-field-CGAL`, not yet `RAR-exact`. CGAL's adaptive tangential relaxation is not identical to Eq. (6) in the 2013 paper. The next phase will implement the paper relaxation separately so that this difference can also be studied instead of silently hidden.
+
+### CSF-field-CGAL
+
+The CSF sizing-field construction is now ported directly from the public author implementation in
+`vvvwo/Adaptively-Isotropic-Remeshing`, commit
+`53cbd9afd429e67bd1736e63594797cea702ceb0`
+(`Mesh_Geometric.cpp` + `AdpIsotropic.cpp`).
+
+The previous Dirichlet / sparse harmonic solve has been removed completely. The current field follows the author-code sequence:
+
+```text
+area-weighted vertex normals
+-> mean normal-angle curvature N_Value
+-> cotangent weights with tan(|angle|) clamped to [0.1, 10]
+-> divide weights by edge length and normalize
+-> 3 in-place smoothing sweeps, lambda = 0.5
+-> 3 synchronous edge-length-weighted neighbor averages
+-> 40-bin histogram
+-> thresholds li1/li2/li3/li4 exactly from the author-code index rules
+-> multipliers {1.8, 1.4, 1.0, 0.8, 0.6}
+-> target_L = mean_edge_length * mesh_scale * multiplier
+```
+
+The field construction is author-code-faithful; the remeshing backend is still deliberately held fixed as CGAL `isotropic_remeshing()`. Therefore this mode is named `CSF-field-CGAL`, not an exact reproduction of the author's complete remesher.
 
 ## Requirements
 
@@ -99,6 +124,17 @@ build\Release\rar_cgal.exe input.obj output_rar.obj ^
   --iterations 5
 ```
 
+### CSF field
+
+```bat
+build\\Release\\rar_cgal.exe input.obj output_csf.obj ^
+  --field csf ^
+  --mesh-scale 1.0 ^
+  --iterations 5
+```
+
+For the current CSF experiments, useful first-pass scales are `1.2`, `0.5`, and `0.1`.
+
 ### Projection diagnostic
 
 ```bat
@@ -136,25 +172,26 @@ build\Release\rar_cgal.exe input.obj ^
   --relax-steps 3
 ```
 
-the program writes the result next to the input mesh using a parameter-aware filename such as:
+the program writes the result next to the input mesh using a parameter-aware filename. Field-specific parameters are included only when they actually affect that method:
 
 ```text
+RAR / CGAL-Adaptive:
 input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
+
+CSF:
+input__scale-1p2__it-5__relax-3__proj-on__field-csf.obj
 ```
 
-The automatic mesh filename records the common experiment parameters first and the field type last:
+The naming skeleton is:
 
 ```text
-epsilon
-min edge length
-max edge length
-iteration count
-relaxation-step count
-projection on/off
-field
+input
++ field-specific parameters
++ common CGAL-backend parameters
++ field tag
 ```
 
-Putting `field` last is intentional: when filenames are sorted lexicographically, results with identical remeshing parameters but different sizing fields stay adjacent.
+Putting `field` last is intentional. Irrelevant parameters are not written into filenames; for example, CSF does not carry an `epsilon` tag.
 
 The default field files are placed inside a folder whose name matches the output mesh stem, so the field files themselves can stay concise.
 
@@ -163,7 +200,7 @@ Decimal points are encoded as `p` so filenames remain shell-friendly
 
 ## Exporting the initial fields
 
-Field export is **enabled by default** for both adaptive modes.
+Field export is **enabled by default** for all adaptive modes.
 
 If the input is `input.obj` and the remeshing parameters are:
 
@@ -214,18 +251,19 @@ diagnostics/custom_rar.csv
 diagnostics/custom_rar.ply
 ```
 
-The CSV columns are:
+For RAR and CGAL-Adaptive, the CSV columns are:
 
 ```text
 vertex_id,x,y,z,curvature,target_length
 ```
 
-The PLY keeps the original triangle connectivity and stores two scalar vertex properties:
+For CSF, one additional diagnostic is exported:
 
 ```text
-curvature
-target_length
+vertex_id,x,y,z,raw_curvature,curvature,target_length
 ```
+
+Here `curvature` is the smoothed CSF value, while `raw_curvature` is the pre-smoothing normal-angle estimate. The PLY stores the same scalar properties and preserves triangle connectivity.
 
 For `cgal-adaptive`, the exported curvature is exactly the quantity used by CGAL's sizing formula: the maximum absolute value of the principal curvatures returned by `interpolated_corrected_curvatures()`.
 
@@ -370,18 +408,19 @@ The Python `tools/colorize_ply.py` utility remains available for scripted figure
 ## Architecture
 
 ```text
-                            CGAL isotropic_remeshing
-                                      |
-                      +---------------+---------------+
-                      |                               |
-            CGAL Adaptive field              RAR paper field
-       interpolated corrected curvature      cotangent H/K
-                      |                               |
-                      +---------------+---------------+
-                                      |
-                         same split/collapse/flip
-                         same CGAL relaxation
-                         same CGAL projection
+                              CGAL isotropic_remeshing
+                                        |
+                 +----------------------+----------------------+
+                 |                      |                      |
+       CGAL Adaptive field          RAR field              CSF field
+       corrected principal       cotangent H/K       smoothed curvature
+            curvature                                     + histogram
+                 |                      |                      |
+                 +----------------------+----------------------+
+                                        |
+                           same split/collapse/flip
+                           same CGAL relaxation
+                           same CGAL projection
 ```
 
 This is the useful comparison for the current stage: change the field, hold the local remeshing implementation fixed.
