@@ -1,5 +1,6 @@
 #include "rar/CGALAdaptiveRemesher.h"
 #include "rar/CSFRemesher.h"
+#include "rar/MeshOutput.h"
 #include "rar/OutputNaming.h"
 #include "rar/RARRemesher.h"
 #include "rar/RemeshConfig.h"
@@ -400,11 +401,28 @@ int main(
             << "Remeshing runtime: "
             << seconds << " s\n";
 
-        if (!CGAL::IO::write_polygon_mesh(
-                cfg.output_path,
-                mesh,
-                CGAL::parameters::
-                    stream_precision(17))) {
+        bool write_ok = false;
+
+        if (rar::has_ply_extension(
+                cfg.output_path)) {
+            // Write PLY through an explicit descriptor->dense-ID map.
+            // This avoids relying on Surface_mesh internal descriptor
+            // values after split/collapse operations.
+            write_ok =
+                rar::write_ascii_ply_compact(
+                    cfg.output_path,
+                    mesh,
+                    17);
+        } else {
+            write_ok =
+                CGAL::IO::write_polygon_mesh(
+                    cfg.output_path,
+                    mesh,
+                    CGAL::parameters::
+                        stream_precision(17));
+        }
+
+        if (!write_ok) {
             std::cerr
                 << "Failed to write output mesh: "
                 << cfg.output_path << '\n';
