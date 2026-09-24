@@ -32,7 +32,6 @@ constexpr std::array<double, 5> kMultipliers{
     1.8, 1.4, 1.0, 0.8, 0.6};
 
 struct AuthorTopology {
-    std::vector<std::array<std::size_t, 2>> face_pairs_flat;
     std::vector<std::vector<std::size_t>> neighbor_entries;
 };
 
