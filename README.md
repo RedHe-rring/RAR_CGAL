@@ -49,17 +49,27 @@ The local mesh operations are still performed by CGAL.
 
 ### CSF-field-CGAL
 
-The CSF mode isolates the sizing field from the original remeshing operators. It currently follows the code-oriented field construction used in the AdaIso reproduction:
+The CSF sizing-field construction is now ported directly from the public author implementation in
+`vvvwo/Adaptively-Isotropic-Remeshing`, commit
+`53cbd9afd429e67bd1736e63594797cea702ceb0`
+(`Mesh_Geometric.cpp` + `AdpIsotropic.cpp`).
+
+The previous Dirichlet / sparse harmonic solve has been removed completely. The current field follows the author-code sequence:
 
 ```text
-mean normal-angle curvature
--> cotangent/length weighted CSF smoothing
--> 40-bin histogram grouping
+area-weighted vertex normals
+-> mean normal-angle curvature N_Value
+-> cotangent weights with tan(|angle|) clamped to [0.1, 10]
+-> divide weights by edge length and normalize
+-> 3 in-place smoothing sweeps, lambda = 0.5
+-> 3 synchronous edge-length-weighted neighbor averages
+-> 40-bin histogram
+-> thresholds li1/li2/li3/li4 exactly from the author-code index rules
 -> multipliers {1.8, 1.4, 1.0, 0.8, 0.6}
 -> target_L = mean_edge_length * mesh_scale * multiplier
 ```
 
-The resulting field is then consumed by the same CGAL `isotropic_remeshing()` backend as the other modes. This is intentionally named `CSF-field-CGAL`; it is not the original CSF remesher with its own split/collapse/flip/smoothing implementation.
+The field construction is author-code-faithful; the remeshing backend is still deliberately held fixed as CGAL `isotropic_remeshing()`. Therefore this mode is named `CSF-field-CGAL`, not an exact reproduction of the author's complete remesher.
 
 ## Requirements
 
