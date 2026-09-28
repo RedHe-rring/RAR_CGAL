@@ -1,5 +1,6 @@
 #pragma once
 
+#include "rar/ChenSizingCorrection.h"
 #include "rar/Types.h"
 
 #include <CGAL/Kernel/global_functions_3.h>
@@ -23,9 +24,24 @@ struct RARFieldStats {
     double curvature_min = 0.0;
     double curvature_max = 0.0;
     double curvature_mean = 0.0;
+
+    // Raw RAR sizing field, before any Chen correction.
     double sizing_min = 0.0;
     double sizing_max = 0.0;
     double sizing_mean = 0.0;
+
+    // Final field consumed by CGAL isotropic_remeshing().
+    double corrected_sizing_min = 0.0;
+    double corrected_sizing_max = 0.0;
+    double corrected_sizing_mean = 0.0;
+
+    bool chen_applied = false;
+    double chen_beta = 0.0;
+    double chen_objective = 0.0;
+    double chen_max_gradient_before = 0.0;
+    double chen_max_gradient_after = 0.0;
+    std::size_t chen_changed_vertex_count = 0;
+
     std::size_t vertex_count = 0;
 };
 
@@ -73,7 +89,8 @@ public:
     RARSizingField(
         const double epsilon,
         const std::pair<double, double>& edge_len_min_max,
-        Mesh& mesh)
+        Mesh& mesh,
+        const std::optional<double> chen_beta = std::nullopt)
         : epsilon_(epsilon),
           min_edge_length_(edge_len_min_max.first),
           max_edge_length_(edge_len_min_max.second)
@@ -89,11 +106,35 @@ public:
         curvature_map_ =
             mesh.add_property_map<vertex_descriptor, double>(
                 "v:rar_curvature", 0.0).first;
+        raw_sizing_map_ =
+            mesh.add_property_map<vertex_descriptor, double>(
+                "v:rar_raw_target_length", max_edge_length_).first;
         sizing_map_ =
             mesh.add_property_map<vertex_descriptor, double>(
                 "v:rar_target_length", max_edge_length_).first;
 
         compute_initial_field(mesh);
+
+        if (chen_beta.has_value()) {
+            const ChenCorrectionStats chen_stats =
+                apply_chen_sizing_correction(
+                    mesh,
+                    sizing_map_,
+                    *chen_beta,
+                    min_edge_length_);
+
+            stats_.chen_applied = true;
+            stats_.chen_beta = *chen_beta;
+            stats_.chen_objective = chen_stats.objective;
+            stats_.chen_max_gradient_before =
+                chen_stats.max_gradient_before;
+            stats_.chen_max_gradient_after =
+                chen_stats.max_gradient_after;
+            stats_.chen_changed_vertex_count =
+                chen_stats.changed_vertex_count;
+
+            update_corrected_sizing_stats(mesh);
+        }
     }
 
     FT at(const vertex_descriptor v, const Mesh&) const {
@@ -155,18 +196,28 @@ public:
         const vertex_descriptor v,
         const Mesh& mesh)
     {
-        double sum = 0.0;
+        double sizing_sum = 0.0;
+        double raw_sizing_sum = 0.0;
         std::size_t count = 0;
 
         for (const halfedge_descriptor h :
              CGAL::halfedges_around_target(v, mesh)) {
-            sum += sizing_map_[source(h, mesh)];
+            const vertex_descriptor n = source(h, mesh);
+            sizing_sum += sizing_map_[n];
+            raw_sizing_sum += raw_sizing_map_[n];
             ++count;
         }
 
-        sizing_map_[v] =
-            count > 0 ? sum / static_cast<double>(count)
-                      : max_edge_length_;
+        if (count > 0) {
+            const double denom =
+                static_cast<double>(count);
+            sizing_map_[v] = sizing_sum / denom;
+            raw_sizing_map_[v] = raw_sizing_sum / denom;
+        } else {
+            sizing_map_[v] = max_edge_length_;
+            raw_sizing_map_[v] = max_edge_length_;
+        }
+
         curvature_map_[v] = 0.0;
     }
 
@@ -176,6 +227,10 @@ public:
 
     double curvature(const vertex_descriptor v) const {
         return curvature_map_[v];
+    }
+
+    double raw_target_length(const vertex_descriptor v) const {
+        return raw_sizing_map_[v];
     }
 
     double target_length(const vertex_descriptor v) const {
@@ -341,6 +396,7 @@ private:
                 max_edge_length_);
 
             curvature_map_[v] = kappa;
+            raw_sizing_map_[v] = target;
             sizing_map_[v] = target;
 
             stats_.curvature_min =
@@ -360,6 +416,37 @@ private:
             static_cast<double>(stats_.vertex_count);
         stats_.curvature_mean = curvature_sum / count;
         stats_.sizing_mean = sizing_sum / count;
+
+        stats_.corrected_sizing_min = stats_.sizing_min;
+        stats_.corrected_sizing_max = stats_.sizing_max;
+        stats_.corrected_sizing_mean = stats_.sizing_mean;
+    }
+
+    void update_corrected_sizing_stats(const Mesh& mesh) {
+        if (stats_.vertex_count == 0) {
+            return;
+        }
+
+        stats_.corrected_sizing_min =
+            std::numeric_limits<double>::infinity();
+        stats_.corrected_sizing_max = 0.0;
+        double sum = 0.0;
+
+        for (const vertex_descriptor v : vertices(mesh)) {
+            const double value = sizing_map_[v];
+            stats_.corrected_sizing_min =
+                (std::min)(
+                    stats_.corrected_sizing_min,
+                    value);
+            stats_.corrected_sizing_max =
+                (std::max)(
+                    stats_.corrected_sizing_max,
+                    value);
+            sum += value;
+        }
+
+        stats_.corrected_sizing_mean =
+            sum / static_cast<double>(stats_.vertex_count);
     }
 
 private:
@@ -367,6 +454,7 @@ private:
     double min_edge_length_;
     double max_edge_length_;
     ScalarMap curvature_map_;
+    ScalarMap raw_sizing_map_;
     ScalarMap sizing_map_;
     RARFieldStats stats_;
 };
