@@ -65,7 +65,7 @@ if(RAR_ENABLE_IPOPT)
             WARNING
             "IPOPT was not found. The executable will still build, "
             "but --field rar-chen will report an error at runtime. "
-            "With vcpkg, install coin-or-ipopt for the active triplet "
+            "With vcpkg, install coin-or-ipopt[mumps] for the active triplet "
             "and reconfigure CMake."
         )
     endif()
