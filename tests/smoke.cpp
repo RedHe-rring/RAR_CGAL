@@ -17,6 +17,7 @@ int main() {
     assert(
         cfg.max_edge_length >=
         cfg.min_edge_length);
+    assert(cfg.chen_beta > 1.0);
     assert(cfg.csf_mesh_scale > 0.0);
     assert(cfg.iterations > 0);
 
@@ -68,6 +69,7 @@ int main() {
     naming.epsilon = 0.001;
     naming.min_edge_length = 0.001;
     naming.max_edge_length = 0.5;
+    naming.chen_beta = 1.2;
     naming.iterations = 5;
     naming.relaxation_steps = 3;
     naming.do_project = true;
@@ -103,6 +105,20 @@ int main() {
             .filename()
             .string() ==
         "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar");
+
+    naming.field_type =
+        rar::FieldType::RARChen;
+
+    const std::string rar_chen_auto_name =
+        std::filesystem::path(
+            rar::make_auto_output_path(
+                naming))
+            .filename()
+            .string();
+
+    assert(
+        rar_chen_auto_name ==
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__field-rar-chen.obj");
 
     naming.field_type =
         rar::FieldType::CSF;
