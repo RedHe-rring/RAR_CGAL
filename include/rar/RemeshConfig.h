@@ -7,6 +7,7 @@ namespace rar {
 enum class FieldType {
     CGALAdaptive,
     RAR,
+    RARChen,
     CSF
 };
 
@@ -18,6 +19,8 @@ inline const char* field_type_name(
         return "cgal-adaptive";
     case FieldType::RAR:
         return "rar";
+    case FieldType::RARChen:
+        return "rar-chen";
     case FieldType::CSF:
         return "csf";
     }
@@ -34,10 +37,13 @@ struct RemeshConfig {
     FieldType field_type =
         FieldType::CGALAdaptive;
 
-    // RAR / CGAL-Adaptive field parameters.
+    // RAR / RAR+Chen / CGAL-Adaptive field parameters.
     double epsilon = 1e-3;
     double min_edge_length = 1e-3;
     double max_edge_length = 5e-1;
+
+    // Chen sizing-field gradation parameter.
+    double chen_beta = 1.2;
 
     // CSF field parameter.
     double csf_mesh_scale = 1.0;
