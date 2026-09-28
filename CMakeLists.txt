@@ -14,13 +14,62 @@ option(
     OFF
 )
 
+option(
+    RAR_ENABLE_IPOPT
+    "Enable IPOPT-based Chen sizing-field correction"
+    ON
+)
+
 add_executable(rar_cgal
     src/main.cpp
     src/CSFSizingField.cpp
+    src/ChenSizingCorrection.cpp
 )
 
 target_include_directories(rar_cgal PRIVATE include)
 target_link_libraries(rar_cgal PRIVATE CGAL::CGAL Eigen3::Eigen)
+
+if(RAR_ENABLE_IPOPT)
+    find_path(
+        IPOPT_INCLUDE_DIR
+        NAMES IpTNLP.hpp
+        PATH_SUFFIXES coin-or coin
+    )
+    find_library(
+        IPOPT_LIBRARY
+        NAMES ipopt libipopt
+    )
+
+    if(IPOPT_INCLUDE_DIR AND IPOPT_LIBRARY)
+        target_include_directories(
+            rar_cgal
+            PRIVATE
+                ${IPOPT_INCLUDE_DIR}
+        )
+        target_link_libraries(
+            rar_cgal
+            PRIVATE
+                ${IPOPT_LIBRARY}
+        )
+        target_compile_definitions(
+            rar_cgal
+            PRIVATE
+                RAR_HAS_IPOPT=1
+        )
+        message(
+            STATUS
+            "RAR+Chen enabled with IPOPT: ${IPOPT_LIBRARY}"
+        )
+    else()
+        message(
+            WARNING
+            "IPOPT was not found. The executable will still build, "
+            "but --field rar-chen will report an error at runtime. "
+            "With vcpkg, install coin-or-ipopt for the active triplet "
+            "and reconfigure CMake."
+        )
+    endif()
+endif()
 
 if(MSVC)
     target_compile_options(rar_cgal PRIVATE /W4 /permissive-)
