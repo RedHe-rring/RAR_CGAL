@@ -432,3 +432,49 @@ This is the useful comparison for the current stage: change the field, hold the 
 3. add edge `length / target_length` distribution statistics;
 4. implement RAR Eq. (6) tangential relaxation as a separate mode;
 5. add feature/boundary constraints after the smooth-surface baseline is stable.
+
+## RAR + Chen sizing-field correction
+
+The `rar-chen` field keeps the existing RAR curvature-to-size mapping and adds
+the gradient-constrained sizing correction from Chen et al. before the same CGAL
+isotropic remeshing backend is called.
+
+For each input vertex, the raw RAR target length is denoted by `h0`. The
+correction solves
+
+```text
+minimize    sum_i (h_i - h0_i)^2
+subject to  ||grad h||_T^2 <= log(beta)^2   for every input triangle T
+            min_edge <= h_i <= h0_i
+```
+
+Thus the experiment changes only the initial sizing field; split/collapse/relax
+still use the same `PMP::isotropic_remeshing()` backend as `--field rar`.
+
+IPOPT is optional at build time but required to run `--field rar-chen`.
+With vcpkg, install it for the same triplet used by CGAL:
+
+```powershell
+vcpkg install coin-or-ipopt:x64-windows
+```
+
+Then reconfigure CMake so that the IPOPT include directory and library are
+detected.
+
+Example:
+
+```powershell
+build\Release\rar_cgal.exe model.obj ^
+  --field rar-chen ^
+  --epsilon 0.01 ^
+  --min-edge 0.001 ^
+  --max-edge 0.05 ^
+  --beta 1.2 ^
+  --iterations 5 ^
+  --relax-steps 3
+```
+
+The exported RAR+Chen field contains three scalar properties:
+`curvature`, `raw_target_length`, and `target_length`. The last one is the
+Chen-corrected field actually consumed by the remesher.
+
