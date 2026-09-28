@@ -455,7 +455,7 @@ IPOPT is optional at build time but required to run `--field rar-chen`.
 With vcpkg, install it for the same triplet used by CGAL:
 
 ```powershell
-vcpkg install coin-or-ipopt:x64-windows
+vcpkg install coin-or-ipopt[mumps]:x64-windows
 ```
 
 Then reconfigure CMake so that the IPOPT include directory and library are
