@@ -451,14 +451,30 @@ ChenCorrectionStats apply_chen_sizing_correction(
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app =
         IpoptApplicationFactory();
 
-    app->Options()->SetIntegerValue("print_level", 0);
-    app->Options()->SetStringValue("sb", "yes");
-    app->Options()->SetStringValue(
-        "hessian_approximation",
-        "limited-memory");
-    app->Options()->SetNumericValue("tol", 1e-8);
-    app->Options()->SetNumericValue("constr_viol_tol", 1e-8);
-    app->Options()->SetIntegerValue("max_iter", 1000);
+    // vcpkg's coin-or-ipopt port is expected to provide MUMPS.
+    // Select it explicitly instead of relying on IPOPT's build-dependent
+    // default linear solver. A build without any linked sparse solver can
+    // otherwise fail from OptimizeTNLP() with Invalid_Option (-12).
+    if (!app->Options()->SetStringValue("linear_solver", "mumps")) {
+        throw std::runtime_error(
+            "IPOPT does not expose the MUMPS linear solver. "
+            "Reinstall coin-or-ipopt with its mumps feature for the active triplet.");
+    }
+
+    // Keep IPOPT diagnostics visible while this experimental backend is being
+    // validated. In particular, Invalid_Option (-12) prints the exact rejected
+    // solver/option here instead of being reduced to an opaque status code.
+    if (!app->Options()->SetIntegerValue("print_level", 5) ||
+        !app->Options()->SetStringValue("sb", "yes") ||
+        !app->Options()->SetStringValue(
+            "hessian_approximation",
+            "limited-memory") ||
+        !app->Options()->SetNumericValue("tol", 1e-8) ||
+        !app->Options()->SetNumericValue("constr_viol_tol", 1e-8) ||
+        !app->Options()->SetIntegerValue("max_iter", 1000)) {
+        throw std::runtime_error(
+            "Failed to set one or more IPOPT options for Chen correction");
+    }
 
     const Ipopt::ApplicationReturnStatus init_status =
         app->Initialize();
@@ -474,9 +490,18 @@ ChenCorrectionStats apply_chen_sizing_correction(
     if (solve_status != Ipopt::Solve_Succeeded &&
         solve_status != Ipopt::Solved_To_Acceptable_Level &&
         solve_status != Ipopt::Feasible_Point_Found) {
+        std::string detail;
+        if (solve_status == Ipopt::Invalid_Option) {
+            detail =
+                " Invalid_Option (-12) usually means the selected sparse "
+                "linear solver or another IPOPT option is unavailable; "
+                "see the IPOPT diagnostic printed immediately above.";
+        }
+
         throw std::runtime_error(
             "IPOPT failed while solving the Chen sizing correction (status " +
-            std::to_string(static_cast<int>(solve_status)) + ")");
+            std::to_string(static_cast<int>(solve_status)) + ")." +
+            detail);
     }
 
     const std::vector<double>& solution =
