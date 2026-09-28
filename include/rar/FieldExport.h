@@ -166,6 +166,39 @@ void write_field_diagnostics(
 }
 
 template <
+    typename CurvatureFn,
+    typename RawTargetFn,
+    typename CorrectedTargetFn>
+void write_rar_chen_field_diagnostics(
+    const Mesh& mesh,
+    const std::string& prefix,
+    CurvatureFn curvature_fn,
+    RawTargetFn raw_target_fn,
+    CorrectedTargetFn corrected_target_fn)
+{
+    detail::write_scalar_field_diagnostics(
+        mesh,
+        prefix,
+        {
+            {
+                "curvature",
+                detail::VertexScalarFn(
+                    curvature_fn)
+            },
+            {
+                "raw_target_length",
+                detail::VertexScalarFn(
+                    raw_target_fn)
+            },
+            {
+                "target_length",
+                detail::VertexScalarFn(
+                    corrected_target_fn)
+            }
+        });
+}
+
+template <
     typename RawCurvatureFn,
     typename CurvatureFn,
     typename TargetFn>
