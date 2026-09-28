@@ -47,11 +47,6 @@ struct TriangleConstraint {
     std::array<Vec3, 3> basis_gradients{};
 };
 
-struct HessianTerm {
-    std::size_t position = 0;
-    double coefficient = 0.0;
-};
-
 inline double constraint_value(
     const TriangleConstraint& c,
     const double* x)
@@ -80,9 +75,44 @@ public:
           hmin_(hmin),
           gradient_limit_sq_(
               std::log(beta) * std::log(beta)),
+          start_(h0_),
           solution_(h0_)
     {
-        build_hessian_structure();
+        // The feasible set is never empty because the constant field h=hmin
+        // satisfies every gradient constraint and the variable bounds.
+        //
+        // Starting IPOPT directly from h0 can be strongly infeasible. Build a
+        // feasible warm start by uniformly shrinking the variation of h0
+        // around the constant hmin field. Since grad(hmin)=0,
+        //
+        //   grad(hmin + s * (h0 - hmin)) = s * grad(h0).
+        //
+        // Choosing s from the maximum initial gradient therefore guarantees
+        // the triangle gradient bounds up to a small safety margin.
+        double max_gradient_sq = 0.0;
+        for (const TriangleConstraint& c : constraints_) {
+            max_gradient_sq =
+                (std::max)(
+                    max_gradient_sq,
+                    constraint_value(c, h0_.data()));
+        }
+
+        const double max_gradient =
+            std::sqrt((std::max)(0.0, max_gradient_sq));
+        const double gradient_limit =
+            std::sqrt(gradient_limit_sq_);
+
+        if (max_gradient > gradient_limit &&
+            max_gradient > 0.0) {
+            const double scale =
+                0.95 * gradient_limit / max_gradient;
+
+            for (std::size_t i = 0; i < start_.size(); ++i) {
+                start_[i] =
+                    hmin_ +
+                    scale * (h0_[i] - hmin_);
+            }
+        }
     }
 
     bool get_nlp_info(
@@ -95,7 +125,7 @@ public:
         n = static_cast<Ipopt::Index>(h0_.size());
         m = static_cast<Ipopt::Index>(constraints_.size());
         nnz_jac_g = 3 * m;
-        nnz_h_lag = static_cast<Ipopt::Index>(hessian_pairs_.size());
+        nnz_h_lag = 0;
         index_style = TNLP::C_STYLE;
         return true;
     }
@@ -146,7 +176,7 @@ public:
         }
 
         for (Ipopt::Index i = 0; i < n; ++i) {
-            x[i] = h0_[static_cast<std::size_t>(i)];
+            x[i] = start_[static_cast<std::size_t>(i)];
         }
 
         return true;
@@ -268,63 +298,19 @@ public:
     }
 
     bool eval_h(
-        Ipopt::Index n,
+        Ipopt::Index,
         const Ipopt::Number*,
         bool,
-        Ipopt::Number obj_factor,
-        Ipopt::Index m,
-        const Ipopt::Number* lambda,
+        Ipopt::Number,
+        Ipopt::Index,
+        const Ipopt::Number*,
         bool,
-        Ipopt::Index nele_hess,
-        Ipopt::Index* iRow,
-        Ipopt::Index* jCol,
-        Ipopt::Number* values) override
+        Ipopt::Index,
+        Ipopt::Index*,
+        Ipopt::Index*,
+        Ipopt::Number*) override
     {
-        if (static_cast<std::size_t>(n) != h0_.size() ||
-            static_cast<std::size_t>(m) != constraints_.size() ||
-            static_cast<std::size_t>(nele_hess) != hessian_pairs_.size()) {
-            return false;
-        }
-
-        if (values == nullptr) {
-            for (std::size_t k = 0; k < hessian_pairs_.size(); ++k) {
-                iRow[k] = static_cast<Ipopt::Index>(
-                    hessian_pairs_[k].first);
-                jCol[k] = static_cast<Ipopt::Index>(
-                    hessian_pairs_[k].second);
-            }
-            return true;
-        }
-
-        std::fill(
-            values,
-            values + static_cast<std::size_t>(nele_hess),
-            0.0);
-
-        // Exact Hessian of sum_i (h_i - h_i^0)^2 is 2I.
-        for (std::size_t i = 0; i < diagonal_hessian_positions_.size(); ++i) {
-            values[diagonal_hessian_positions_[i]] +=
-                2.0 * obj_factor;
-        }
-
-        // For g_T(h) = ||sum_i h_i grad(phi_i)||^2,
-        // d^2 g_T / (d h_i d h_j) = 2 grad(phi_i) dot grad(phi_j).
-        for (std::size_t constraint_id = 0;
-             constraint_id < constraint_hessian_terms_.size();
-             ++constraint_id) {
-            const double multiplier = lambda[constraint_id];
-
-            if (multiplier == 0.0) {
-                continue;
-            }
-
-            for (const HessianTerm& term :
-                 constraint_hessian_terms_[constraint_id]) {
-                values[term.position] +=
-                    multiplier * term.coefficient;
-            }
-        }
-
+        // IPOPT uses its limited-memory Hessian approximation.
         return true;
     }
 
@@ -351,104 +337,13 @@ public:
     }
 
 private:
-    void build_hessian_structure()
-    {
-        std::map<
-            std::pair<std::size_t, std::size_t>,
-            std::size_t> positions;
-
-        for (std::size_t i = 0; i < h0_.size(); ++i) {
-            positions.emplace(std::make_pair(i, i), 0);
-        }
-
-        for (const TriangleConstraint& c : constraints_) {
-            for (std::size_t local_i = 0; local_i < 3; ++local_i) {
-                for (std::size_t local_j = 0;
-                     local_j <= local_i;
-                     ++local_j) {
-                    const std::size_t global_i =
-                        c.vertex_ids[local_i];
-                    const std::size_t global_j =
-                        c.vertex_ids[local_j];
-
-                    const std::size_t row =
-                        (std::max)(global_i, global_j);
-                    const std::size_t col =
-                        (std::min)(global_i, global_j);
-
-                    positions.emplace(
-                        std::make_pair(row, col),
-                        0);
-                }
-            }
-        }
-
-        hessian_pairs_.reserve(positions.size());
-
-        std::size_t next_position = 0;
-        for (auto& entry : positions) {
-            entry.second = next_position++;
-            hessian_pairs_.push_back(entry.first);
-        }
-
-        diagonal_hessian_positions_.resize(h0_.size());
-        for (std::size_t i = 0; i < h0_.size(); ++i) {
-            diagonal_hessian_positions_[i] =
-                positions.at(std::make_pair(i, i));
-        }
-
-        constraint_hessian_terms_.resize(constraints_.size());
-
-        for (std::size_t constraint_id = 0;
-             constraint_id < constraints_.size();
-             ++constraint_id) {
-            const TriangleConstraint& c =
-                constraints_[constraint_id];
-
-            std::size_t cursor = 0;
-            for (std::size_t local_i = 0; local_i < 3; ++local_i) {
-                for (std::size_t local_j = 0;
-                     local_j <= local_i;
-                     ++local_j) {
-                    const std::size_t global_i =
-                        c.vertex_ids[local_i];
-                    const std::size_t global_j =
-                        c.vertex_ids[local_j];
-
-                    const std::size_t row =
-                        (std::max)(global_i, global_j);
-                    const std::size_t col =
-                        (std::min)(global_i, global_j);
-
-                    HessianTerm term;
-                    term.position =
-                        positions.at(
-                            std::make_pair(row, col));
-                    term.coefficient =
-                        2.0 *
-                        dot(
-                            c.basis_gradients[local_i],
-                            c.basis_gradients[local_j]);
-
-                    constraint_hessian_terms_[constraint_id][cursor++] =
-                        term;
-                }
-            }
-        }
-    }
-
     std::vector<double> h0_;
     std::vector<TriangleConstraint> constraints_;
     double hmin_;
     double gradient_limit_sq_;
+    std::vector<double> start_;
     std::vector<double> solution_;
 
-    std::vector<
-        std::pair<std::size_t, std::size_t>>
-        hessian_pairs_;
-    std::vector<std::size_t> diagonal_hessian_positions_;
-    std::vector<std::array<HessianTerm, 6>>
-        constraint_hessian_terms_;
 };
 
 std::vector<TriangleConstraint> build_constraints(
@@ -599,6 +494,9 @@ ChenCorrectionStats apply_chen_sizing_correction(
     if (!app->Options()->SetStringValue("linear_solver", "mumps") ||
         !app->Options()->SetIntegerValue("print_level", 0) ||
         !app->Options()->SetStringValue("sb", "yes") ||
+        !app->Options()->SetStringValue(
+            "hessian_approximation",
+            "limited-memory") ||
         !app->Options()->SetNumericValue("tol", 1e-8) ||
         !app->Options()->SetNumericValue("constr_viol_tol", 1e-8) ||
         !app->Options()->SetIntegerValue("max_iter", 1000)) {
