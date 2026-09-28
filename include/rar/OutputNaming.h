@@ -67,6 +67,21 @@ inline std::string make_parameterized_stem(
                    cfg.max_edge_length);
         break;
 
+    case FieldType::RARChen:
+        name
+            << "__eps-"
+            << filename_number(cfg.epsilon)
+            << "__lmin-"
+            << filename_number(
+                   cfg.min_edge_length)
+            << "__lmax-"
+            << filename_number(
+                   cfg.max_edge_length)
+            << "__beta-"
+            << filename_number(
+                   cfg.chen_beta);
+        break;
+
     case FieldType::CSF:
         name
             << "__scale-"
