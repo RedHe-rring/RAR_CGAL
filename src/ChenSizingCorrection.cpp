@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -48,6 +47,11 @@ struct TriangleConstraint {
     std::array<Vec3, 3> basis_gradients{};
 };
 
+struct HessianTerm {
+    std::size_t position = 0;
+    double coefficient = 0.0;
+};
+
 inline double constraint_value(
     const TriangleConstraint& c,
     const double* x)
@@ -78,6 +82,7 @@ public:
               std::log(beta) * std::log(beta)),
           solution_(h0_)
     {
+        build_hessian_structure();
     }
 
     bool get_nlp_info(
@@ -90,7 +95,7 @@ public:
         n = static_cast<Ipopt::Index>(h0_.size());
         m = static_cast<Ipopt::Index>(constraints_.size());
         nnz_jac_g = 3 * m;
-        nnz_h_lag = 0;
+        nnz_h_lag = static_cast<Ipopt::Index>(hessian_pairs_.size());
         index_style = TNLP::C_STYLE;
         return true;
     }
@@ -114,7 +119,10 @@ public:
         }
 
         for (Ipopt::Index i = 0; i < m; ++i) {
-            g_l[i] = 0.0;
+            // This constraint has only an upper bound:
+            // ||grad h||^2 <= log(beta)^2.
+            // IPOPT treats bounds <= -1e19 as unbounded by default.
+            g_l[i] = -1e19;
             g_u[i] = gradient_limit_sq_;
         }
 
@@ -260,19 +268,63 @@ public:
     }
 
     bool eval_h(
-        Ipopt::Index,
+        Ipopt::Index n,
         const Ipopt::Number*,
         bool,
-        Ipopt::Number,
-        Ipopt::Index,
-        const Ipopt::Number*,
+        Ipopt::Number obj_factor,
+        Ipopt::Index m,
+        const Ipopt::Number* lambda,
         bool,
-        Ipopt::Index,
-        Ipopt::Index*,
-        Ipopt::Index*,
-        Ipopt::Number*) override
+        Ipopt::Index nele_hess,
+        Ipopt::Index* iRow,
+        Ipopt::Index* jCol,
+        Ipopt::Number* values) override
     {
-        // We ask IPOPT to use its limited-memory Hessian approximation.
+        if (static_cast<std::size_t>(n) != h0_.size() ||
+            static_cast<std::size_t>(m) != constraints_.size() ||
+            static_cast<std::size_t>(nele_hess) != hessian_pairs_.size()) {
+            return false;
+        }
+
+        if (values == nullptr) {
+            for (std::size_t k = 0; k < hessian_pairs_.size(); ++k) {
+                iRow[k] = static_cast<Ipopt::Index>(
+                    hessian_pairs_[k].first);
+                jCol[k] = static_cast<Ipopt::Index>(
+                    hessian_pairs_[k].second);
+            }
+            return true;
+        }
+
+        std::fill(
+            values,
+            values + static_cast<std::size_t>(nele_hess),
+            0.0);
+
+        // Exact Hessian of sum_i (h_i - h_i^0)^2 is 2I.
+        for (std::size_t i = 0; i < diagonal_hessian_positions_.size(); ++i) {
+            values[diagonal_hessian_positions_[i]] +=
+                2.0 * obj_factor;
+        }
+
+        // For g_T(h) = ||sum_i h_i grad(phi_i)||^2,
+        // d^2 g_T / (d h_i d h_j) = 2 grad(phi_i) dot grad(phi_j).
+        for (std::size_t constraint_id = 0;
+             constraint_id < constraint_hessian_terms_.size();
+             ++constraint_id) {
+            const double multiplier = lambda[constraint_id];
+
+            if (multiplier == 0.0) {
+                continue;
+            }
+
+            for (const HessianTerm& term :
+                 constraint_hessian_terms_[constraint_id]) {
+                values[term.position] +=
+                    multiplier * term.coefficient;
+            }
+        }
+
         return true;
     }
 
@@ -299,11 +351,104 @@ public:
     }
 
 private:
+    void build_hessian_structure()
+    {
+        std::map<
+            std::pair<std::size_t, std::size_t>,
+            std::size_t> positions;
+
+        for (std::size_t i = 0; i < h0_.size(); ++i) {
+            positions.emplace(std::make_pair(i, i), 0);
+        }
+
+        for (const TriangleConstraint& c : constraints_) {
+            for (std::size_t local_i = 0; local_i < 3; ++local_i) {
+                for (std::size_t local_j = 0;
+                     local_j <= local_i;
+                     ++local_j) {
+                    const std::size_t global_i =
+                        c.vertex_ids[local_i];
+                    const std::size_t global_j =
+                        c.vertex_ids[local_j];
+
+                    const std::size_t row =
+                        (std::max)(global_i, global_j);
+                    const std::size_t col =
+                        (std::min)(global_i, global_j);
+
+                    positions.emplace(
+                        std::make_pair(row, col),
+                        0);
+                }
+            }
+        }
+
+        hessian_pairs_.reserve(positions.size());
+
+        std::size_t next_position = 0;
+        for (auto& entry : positions) {
+            entry.second = next_position++;
+            hessian_pairs_.push_back(entry.first);
+        }
+
+        diagonal_hessian_positions_.resize(h0_.size());
+        for (std::size_t i = 0; i < h0_.size(); ++i) {
+            diagonal_hessian_positions_[i] =
+                positions.at(std::make_pair(i, i));
+        }
+
+        constraint_hessian_terms_.resize(constraints_.size());
+
+        for (std::size_t constraint_id = 0;
+             constraint_id < constraints_.size();
+             ++constraint_id) {
+            const TriangleConstraint& c =
+                constraints_[constraint_id];
+
+            std::size_t cursor = 0;
+            for (std::size_t local_i = 0; local_i < 3; ++local_i) {
+                for (std::size_t local_j = 0;
+                     local_j <= local_i;
+                     ++local_j) {
+                    const std::size_t global_i =
+                        c.vertex_ids[local_i];
+                    const std::size_t global_j =
+                        c.vertex_ids[local_j];
+
+                    const std::size_t row =
+                        (std::max)(global_i, global_j);
+                    const std::size_t col =
+                        (std::min)(global_i, global_j);
+
+                    HessianTerm term;
+                    term.position =
+                        positions.at(
+                            std::make_pair(row, col));
+                    term.coefficient =
+                        2.0 *
+                        dot(
+                            c.basis_gradients[local_i],
+                            c.basis_gradients[local_j]);
+
+                    constraint_hessian_terms_[constraint_id][cursor++] =
+                        term;
+                }
+            }
+        }
+    }
+
     std::vector<double> h0_;
     std::vector<TriangleConstraint> constraints_;
     double hmin_;
     double gradient_limit_sq_;
     std::vector<double> solution_;
+
+    std::vector<
+        std::pair<std::size_t, std::size_t>>
+        hessian_pairs_;
+    std::vector<std::size_t> diagonal_hessian_positions_;
+    std::vector<std::array<HessianTerm, 6>>
+        constraint_hessian_terms_;
 };
 
 std::vector<TriangleConstraint> build_constraints(
@@ -451,29 +596,14 @@ ChenCorrectionStats apply_chen_sizing_correction(
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app =
         IpoptApplicationFactory();
 
-    // vcpkg's coin-or-ipopt port is expected to provide MUMPS.
-    // Select it explicitly instead of relying on IPOPT's build-dependent
-    // default linear solver. A build without any linked sparse solver can
-    // otherwise fail from OptimizeTNLP() with Invalid_Option (-12).
-    if (!app->Options()->SetStringValue("linear_solver", "mumps")) {
-        throw std::runtime_error(
-            "IPOPT does not expose the MUMPS linear solver. "
-            "Reinstall coin-or-ipopt with its mumps feature for the active triplet.");
-    }
-
-    // Keep IPOPT diagnostics visible while this experimental backend is being
-    // validated. In particular, Invalid_Option (-12) prints the exact rejected
-    // solver/option here instead of being reduced to an opaque status code.
-    if (!app->Options()->SetIntegerValue("print_level", 5) ||
+    if (!app->Options()->SetStringValue("linear_solver", "mumps") ||
+        !app->Options()->SetIntegerValue("print_level", 0) ||
         !app->Options()->SetStringValue("sb", "yes") ||
-        !app->Options()->SetStringValue(
-            "hessian_approximation",
-            "limited-memory") ||
         !app->Options()->SetNumericValue("tol", 1e-8) ||
         !app->Options()->SetNumericValue("constr_viol_tol", 1e-8) ||
         !app->Options()->SetIntegerValue("max_iter", 1000)) {
         throw std::runtime_error(
-            "Failed to set one or more IPOPT options for Chen correction");
+            "Failed to configure IPOPT for Chen correction");
     }
 
     const Ipopt::ApplicationReturnStatus init_status =
@@ -490,18 +620,9 @@ ChenCorrectionStats apply_chen_sizing_correction(
     if (solve_status != Ipopt::Solve_Succeeded &&
         solve_status != Ipopt::Solved_To_Acceptable_Level &&
         solve_status != Ipopt::Feasible_Point_Found) {
-        std::string detail;
-        if (solve_status == Ipopt::Invalid_Option) {
-            detail =
-                " Invalid_Option (-12) usually means the selected sparse "
-                "linear solver or another IPOPT option is unavailable; "
-                "see the IPOPT diagnostic printed immediately above.";
-        }
-
         throw std::runtime_error(
             "IPOPT failed while solving the Chen sizing correction (status " +
-            std::to_string(static_cast<int>(solve_status)) + ")." +
-            detail);
+            std::to_string(static_cast<int>(solve_status)) + ")");
     }
 
     const std::vector<double>& solution =
