@@ -29,8 +29,9 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | cgal-adaptive-chen | rar | rar-chen | csf\n"
-        << "  --epsilon <value>       RAR/CGAL approximation tolerance (default: 0.001)\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-chen | rar | rar-relative | rar-chen | csf\n"
+        << "  --epsilon <value>       RAR/CGAL absolute approximation tolerance (default: 0.001)\n"
+        << "  --relative-error <value> Curvature-normalized eta=epsilon*kappa for rar-relative (default: 0.01)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
         << "  --beta <value>          Chen progressive factor for *-chen modes (default: 1.2)\n"
@@ -43,7 +44,8 @@ void print_usage(const char* exe) {
         << "Field notes:\n"
         << "  cgal-adaptive       CGAL 6.1.x Adaptive_sizing_field.\n"
         << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
-        << "  rar                 RAR cotangent-curvature sizing field with CGAL local operators.\n"
+        << "  rar                 RAR cotangent-curvature sizing field with global absolute epsilon.\n"
+        << "  rar-relative        RAR field with eta=epsilon(x)*kappa(x) held constant.\n"
         << "  rar-chen            RAR field followed by Chen gradient-constrained correction.\n"
         << "  csf                 CSF code-oriented smoothed-curvature field with CGAL local operators.\n";
 }
@@ -65,6 +67,11 @@ rar::FieldType parse_field_type(
         return rar::FieldType::RAR;
     }
 
+    if (value == "rar-relative" ||
+        value == "rar-rel") {
+        return rar::FieldType::RARRelative;
+    }
+
     if (value == "rar-chen") {
         return rar::FieldType::RARChen;
     }
@@ -75,7 +82,7 @@ rar::FieldType parse_field_type(
 
     throw std::invalid_argument(
         "Unknown field '" + value +
-        "'. Expected cgal-adaptive, cgal-adaptive-chen, rar, rar-chen, or csf.");
+        "'. Expected cgal-adaptive, cgal-adaptive-chen, rar, rar-relative, rar-chen, or csf.");
 }
 
 rar::RemeshConfig parse_args(
@@ -131,6 +138,10 @@ rar::RemeshConfig parse_args(
                     require_value(arg));
         } else if (arg == "--epsilon") {
             cfg.epsilon =
+                std::stod(require_value(arg));
+        } else if (arg == "--relative-error" ||
+                   arg == "--eta") {
+            cfg.relative_error =
                 std::stod(require_value(arg));
         } else if (arg == "--min-edge") {
             cfg.min_edge_length =
@@ -200,7 +211,14 @@ void validate_config(
         return;
     }
 
-    if (!(cfg.epsilon > 0.0)) {
+    if (cfg.field_type ==
+        rar::FieldType::RARRelative) {
+        if (!(cfg.relative_error > 0.0) ||
+            !(cfg.relative_error < 1.0)) {
+            throw std::invalid_argument(
+                "relative_error must be in (0, 1)");
+        }
+    } else if (!(cfg.epsilon > 0.0)) {
         throw std::invalid_argument(
             "epsilon must be > 0");
     }
@@ -336,8 +354,18 @@ void print_config(
             << ", mesh_scale="
             << cfg.csf_mesh_scale;
     } else {
+        if (cfg.field_type ==
+            rar::FieldType::RARRelative) {
+            std::cout
+                << ", relative_error="
+                << cfg.relative_error;
+        } else {
+            std::cout
+                << ", epsilon="
+                << cfg.epsilon;
+        }
+
         std::cout
-            << ", epsilon=" << cfg.epsilon
             << ", min_edge="
             << cfg.min_edge_length
             << ", max_edge="
@@ -454,6 +482,12 @@ int main(
                    rar::FieldType::RAR) {
             const rar::RARFieldStats field_stats =
                 rar::run_rar_field_cgal_remeshing(
+                    mesh, cfg);
+            print_rar_field_stats(field_stats);
+        } else if (cfg.field_type ==
+                   rar::FieldType::RARRelative) {
+            const rar::RARFieldStats field_stats =
+                rar::run_rar_relative_field_cgal_remeshing(
                     mesh, cfg);
             print_rar_field_stats(field_stats);
         } else if (cfg.field_type ==
