@@ -8,6 +8,7 @@ enum class FieldType {
     CGALAdaptive,
     CGALAdaptiveChen,
     RAR,
+    RARRelative,
     RARChen,
     CSF
 };
@@ -22,6 +23,8 @@ inline const char* field_type_name(
         return "cgal-adaptive-chen";
     case FieldType::RAR:
         return "rar";
+    case FieldType::RARRelative:
+        return "rar-relative";
     case FieldType::RARChen:
         return "rar-chen";
     case FieldType::CSF:
@@ -42,6 +45,12 @@ struct RemeshConfig {
 
     // RAR / RAR+Chen / CGAL-Adaptive / CGAL-Adaptive+Chen parameters.
     double epsilon = 1e-3;
+
+    // Curvature-normalized RAR mode:
+    // eta = epsilon(x) * kappa(x), so epsilon(x) = eta / kappa(x).
+    // eta is dimensionless and should lie in (0, 1).
+    double relative_error = 1e-2;
+
     double min_edge_length = 1e-3;
     double max_edge_length = 5e-1;
 
