@@ -107,6 +107,20 @@ int main() {
         "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar");
 
     naming.field_type =
+        rar::FieldType::CGALAdaptiveChen;
+
+    const std::string cgal_chen_auto_name =
+        std::filesystem::path(
+            rar::make_auto_output_path(
+                naming))
+            .filename()
+            .string();
+
+    assert(
+        cgal_chen_auto_name ==
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__field-cgal-adaptive-chen.obj");
+
+    naming.field_type =
         rar::FieldType::RARChen;
 
     const std::string rar_chen_auto_name =
