@@ -4,10 +4,12 @@ A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing 
 
 ## Implemented modes
 
-The executable now keeps three adaptive sizing modes side by side:
+The executable keeps several adaptive sizing modes side by side:
 
 - `cgal-adaptive`: CGAL 6.1.x `Adaptive_sizing_field`.
+- `cgal-adaptive-chen`: the same CGAL adaptive field followed by the Chen gradient-constrained correction.
 - `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
+- `rar-chen`: the RAR field followed by the same Chen correction.
 - `csf`: code-oriented curvature-smoothed-field sizing (Lv et al.), passed to the same CGAL backend.
 
 This separation is intentional. It allows direct experiments on the sizing field without changing split/collapse/flip infrastructure.
@@ -112,6 +114,23 @@ build\Release\rar_cgal.exe input.obj output_cgal.obj ^
   --max-edge 0.5 ^
   --iterations 5
 ```
+
+### CGAL adaptive field + Chen correction
+
+```bat
+build\Release\rar_cgal.exe input.obj output_cgal_chen.obj ^
+  --field cgal-adaptive-chen ^
+  --epsilon 0.001 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --beta 1.2 ^
+  --iterations 5
+```
+
+The initial CGAL adaptive target lengths are copied to a vertex property map,
+projected by the same Chen optimization used by `rar-chen`, and the corrected
+field is then consumed by the same CGAL local remeshing backend. The exported
+field contains `curvature`, `raw_target_length`, and `target_length`.
 
 ### RAR paper-oriented field
 
@@ -437,7 +456,9 @@ This is the useful comparison for the current stage: change the field, hold the 
 
 The `rar-chen` field keeps the existing RAR curvature-to-size mapping and adds
 the gradient-constrained sizing correction from Chen et al. before the same CGAL
-isotropic remeshing backend is called.
+isotropic remeshing backend is called. The `cgal-adaptive-chen` mode applies the
+same correction to CGAL's adaptive field, which makes it possible to test Chen
+as a field-independent post-processing step.
 
 For each input vertex, the raw RAR target length is denoted by `h0`. The
 correction solves
