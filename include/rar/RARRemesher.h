@@ -18,13 +18,15 @@ namespace PMP = CGAL::Polygon_mesh_processing;
 inline RARFieldStats run_rar_like_field_cgal_remeshing(
     Mesh& mesh,
     const RemeshConfig& cfg,
-    const std::optional<double> chen_beta)
+    const std::optional<double> chen_beta,
+    const std::optional<double> relative_error = std::nullopt)
 {
     RARSizingField sizing_field(
         cfg.epsilon,
         {cfg.min_edge_length, cfg.max_edge_length},
         mesh,
-        chen_beta);
+        chen_beta,
+        relative_error);
 
     const RARFieldStats initial_stats = sizing_field.stats();
 
@@ -84,6 +86,17 @@ inline RARFieldStats run_rar_field_cgal_remeshing(
         mesh,
         cfg,
         std::nullopt);
+}
+
+inline RARFieldStats run_rar_relative_field_cgal_remeshing(
+    Mesh& mesh,
+    const RemeshConfig& cfg)
+{
+    return run_rar_like_field_cgal_remeshing(
+        mesh,
+        cfg,
+        std::nullopt,
+        cfg.relative_error);
 }
 
 inline RARFieldStats run_rar_chen_field_cgal_remeshing(
