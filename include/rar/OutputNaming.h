@@ -67,6 +67,7 @@ inline std::string make_parameterized_stem(
                    cfg.max_edge_length);
         break;
 
+    case FieldType::CGALAdaptiveChen:
     case FieldType::RARChen:
         name
             << "__eps-"
