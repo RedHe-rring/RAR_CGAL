@@ -39,6 +39,48 @@ int main() {
         std::abs(actual - expected) <
         1e-12);
 
+    const double eta = 0.01;
+    const double kappa_a = 2.0;
+    const double kappa_b = 5.0;
+    const double relative_a =
+        rar::rar_curvature_normalized_target_length(
+            kappa_a,
+            eta,
+            1e-9,
+            10.0);
+    const double relative_b =
+        rar::rar_curvature_normalized_target_length(
+            kappa_b,
+            eta,
+            1e-9,
+            10.0);
+
+    const double expected_relative_factor =
+        std::sqrt(
+            6.0 * eta -
+            3.0 * eta * eta);
+
+    assert(
+        std::abs(
+            relative_a * kappa_a -
+            expected_relative_factor) <
+        1e-12);
+    assert(
+        std::abs(
+            relative_b * kappa_b -
+            expected_relative_factor) <
+        1e-12);
+
+    const double flat_relative =
+        rar::rar_curvature_normalized_target_length(
+            0.0,
+            eta,
+            0.1,
+            2.0);
+    assert(
+        std::abs(flat_relative - 2.0) <
+        1e-12);
+
     const double flat =
         rar::rar_target_length(
             0.0,
@@ -105,6 +147,21 @@ int main() {
             .filename()
             .string() ==
         "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar");
+
+    naming.field_type =
+        rar::FieldType::RARRelative;
+    naming.relative_error = 0.01;
+
+    const std::string rar_relative_auto_name =
+        std::filesystem::path(
+            rar::make_auto_output_path(
+                naming))
+            .filename()
+            .string();
+
+    assert(
+        rar_relative_auto_name ==
+        "sample__eta-0p01__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar-relative.obj");
 
     naming.field_type =
         rar::FieldType::CGALAdaptiveChen;
