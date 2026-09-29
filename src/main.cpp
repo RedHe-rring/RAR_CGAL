@@ -29,11 +29,11 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | rar | rar-chen | csf (default: cgal-adaptive)\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-chen | rar | rar-chen | csf\n"
         << "  --epsilon <value>       RAR/CGAL approximation tolerance (default: 0.001)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
-        << "  --beta <value>          Chen progressive factor for rar-chen (default: 1.2)\n"
+        << "  --beta <value>          Chen progressive factor for *-chen modes (default: 1.2)\n"
         << "  --mesh-scale <value>    CSF global target-length scale (default: 1.0)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
         << "  --relax-steps <n>       Relaxation steps per iteration (default: 3)\n"
@@ -41,10 +41,11 @@ void print_usage(const char* exe) {
         << "  --no-export-field       Disable default field export\n"
         << "  --no-project            Disable projection to the input surface\n\n"
         << "Field notes:\n"
-        << "  cgal-adaptive  CGAL 6.1.x Adaptive_sizing_field.\n"
-        << "  rar            RAR cotangent-curvature sizing field with CGAL local operators.\n"
-        << "  rar-chen       RAR field followed by Chen gradient-constrained correction.\n"
-        << "  csf            CSF code-oriented smoothed-curvature field with CGAL local operators.\n";
+        << "  cgal-adaptive       CGAL 6.1.x Adaptive_sizing_field.\n"
+        << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
+        << "  rar                 RAR cotangent-curvature sizing field with CGAL local operators.\n"
+        << "  rar-chen            RAR field followed by Chen gradient-constrained correction.\n"
+        << "  csf                 CSF code-oriented smoothed-curvature field with CGAL local operators.\n";
 }
 
 rar::FieldType parse_field_type(
@@ -53,6 +54,11 @@ rar::FieldType parse_field_type(
     if (value == "cgal-adaptive" ||
         value == "cgal") {
         return rar::FieldType::CGALAdaptive;
+    }
+
+    if (value == "cgal-adaptive-chen" ||
+        value == "cgal-chen") {
+        return rar::FieldType::CGALAdaptiveChen;
     }
 
     if (value == "rar") {
@@ -69,7 +75,7 @@ rar::FieldType parse_field_type(
 
     throw std::invalid_argument(
         "Unknown field '" + value +
-        "'. Expected cgal-adaptive, rar, rar-chen, or csf.");
+        "'. Expected cgal-adaptive, cgal-adaptive-chen, rar, rar-chen, or csf.");
 }
 
 rar::RemeshConfig parse_args(
@@ -212,11 +218,13 @@ void validate_config(
             "max_edge_length");
     }
 
-    if (cfg.field_type ==
-            rar::FieldType::RARChen &&
+    if ((cfg.field_type ==
+             rar::FieldType::RARChen ||
+         cfg.field_type ==
+             rar::FieldType::CGALAdaptiveChen) &&
         !(cfg.chen_beta > 1.0)) {
         throw std::invalid_argument(
-            "beta must be > 1 for rar-chen");
+            "beta must be > 1 for Chen-corrected fields");
     }
 }
 
@@ -266,6 +274,32 @@ void print_rar_field_stats(
     }
 }
 
+void print_cgal_adaptive_chen_stats(
+    const rar::CGALAdaptiveChenStats& s)
+{
+    std::cout
+        << "CGAL-Adaptive initial field:\n"
+        << "  raw sizing min/mean/max = "
+        << s.raw_sizing_min << " / "
+        << s.raw_sizing_mean << " / "
+        << s.raw_sizing_max << '\n'
+        << "Chen correction:\n"
+        << "  beta                    = "
+        << s.chen_beta << '\n'
+        << "  corrected min/mean/max  = "
+        << s.corrected_sizing_min << " / "
+        << s.corrected_sizing_mean << " / "
+        << s.corrected_sizing_max << '\n'
+        << "  max |grad h| before/after = "
+        << s.chen_max_gradient_before << " / "
+        << s.chen_max_gradient_after << '\n'
+        << "  changed vertices        = "
+        << s.chen_changed_vertex_count << " / "
+        << s.vertex_count << '\n'
+        << "  projection objective    = "
+        << s.chen_objective << '\n';
+}
+
 void print_csf_field_stats(
     const rar::CSFFieldStats& s)
 {
@@ -310,7 +344,9 @@ void print_config(
             << cfg.max_edge_length;
 
         if (cfg.field_type ==
-            rar::FieldType::RARChen) {
+                rar::FieldType::RARChen ||
+            cfg.field_type ==
+                rar::FieldType::CGALAdaptiveChen) {
             std::cout
                 << ", beta="
                 << cfg.chen_beta;
@@ -407,6 +443,13 @@ int main(
             rar::FieldType::CGALAdaptive) {
             rar::run_cgal_adaptive_remeshing(
                 mesh, cfg);
+        } else if (cfg.field_type ==
+                   rar::FieldType::CGALAdaptiveChen) {
+            const rar::CGALAdaptiveChenStats field_stats =
+                rar::run_cgal_adaptive_chen_remeshing(
+                    mesh, cfg);
+            print_cgal_adaptive_chen_stats(
+                field_stats);
         } else if (cfg.field_type ==
                    rar::FieldType::RAR) {
             const rar::RARFieldStats field_stats =
