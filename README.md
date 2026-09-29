@@ -8,7 +8,8 @@ The executable keeps several adaptive sizing modes side by side:
 
 - `cgal-adaptive`: CGAL 6.1.x `Adaptive_sizing_field`.
 - `cgal-adaptive-chen`: the same CGAL adaptive field followed by the Chen gradient-constrained correction.
-- `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
+- `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field with one global absolute `epsilon`, passed to the same CGAL `isotropic_remeshing()` backend.
+- `rar-relative`: experimental curvature-normalized RAR field that holds `eta = epsilon(x) * kappa(x)` constant, so `epsilon(x) = eta / kappa(x)`.
 - `rar-chen`: the RAR field followed by the same Chen correction.
 - `csf`: code-oriented curvature-smoothed-field sizing (Lv et al.), passed to the same CGAL backend.
 
@@ -143,6 +144,39 @@ build\Release\rar_cgal.exe input.obj output_rar.obj ^
   --iterations 5
 ```
 
+### RAR curvature-normalized relative-error experiment
+
+This mode tests the hypothesis that a single absolute RAR tolerance gives
+different relative fidelity across curvature scales.
+
+Holding
+
+```text
+eta = epsilon(x) * kappa(x)
+```
+
+constant gives
+
+```text
+epsilon(x) = eta / kappa(x)
+h(x)       = sqrt(6 eta - 3 eta^2) / kappa(x)
+```
+
+so the normalized target length `h * kappa` is constant before
+`min-edge` / `max-edge` clamping.
+
+```bat
+build\Release\rar_cgal.exe input.obj output_rar_relative.obj ^
+  --field rar-relative ^
+  --relative-error 0.01 ^
+  --min-edge 0.001 ^
+  --max-edge 0.5 ^
+  --iterations 5
+```
+
+`--eta` is accepted as a short alias for `--relative-error`.
+The parameter is dimensionless and must lie in `(0, 1)`.
+
 ### CSF field
 
 ```bat
@@ -196,6 +230,9 @@ the program writes the result next to the input mesh using a parameter-aware fil
 ```text
 RAR / CGAL-Adaptive:
 input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
+
+RAR relative:
+input__eta-0p01__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar-relative.obj
 
 CSF:
 input__scale-1p2__it-5__relax-3__proj-on__field-csf.obj
