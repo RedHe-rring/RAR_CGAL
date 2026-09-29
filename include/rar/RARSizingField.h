@@ -77,6 +77,54 @@ inline double rar_target_length(
     return std::sqrt(value_sq);
 }
 
+inline double rar_curvature_normalized_target_length(
+    const double kappa,
+    const double relative_error,
+    const double min_edge_length,
+    const double max_edge_length)
+{
+    if (!(relative_error > 0.0) ||
+        !(relative_error < 1.0)) {
+        throw std::invalid_argument(
+            "RAR relative_error must be in (0, 1)");
+    }
+    if (!(min_edge_length > 0.0) ||
+        min_edge_length > max_edge_length) {
+        throw std::invalid_argument(
+            "Invalid RAR edge-length bounds");
+    }
+
+    if (!std::isfinite(kappa) || kappa <= 1e-15) {
+        return max_edge_length;
+    }
+
+    // Let eta = epsilon(x) * kappa(x). Holding eta fixed makes
+    // the approximation tolerance relative to the local curvature
+    // radius r = 1 / kappa:
+    //
+    //   epsilon(x) = eta / kappa(x)
+    //
+    // Substituting this into the RAR sizing formula gives
+    //
+    //   h(x) = sqrt(6 eta - 3 eta^2) / kappa(x).
+    const double factor_sq =
+        6.0 * relative_error -
+        3.0 * relative_error * relative_error;
+    const double value_sq =
+        factor_sq / (kappa * kappa);
+
+    if (!std::isfinite(value_sq) ||
+        value_sq >= max_edge_length * max_edge_length) {
+        return max_edge_length;
+    }
+
+    if (value_sq <= min_edge_length * min_edge_length) {
+        return min_edge_length;
+    }
+
+    return std::sqrt(value_sq);
+}
+
 class RARSizingField {
 public:
     using vertex_descriptor = boost::graph_traits<Mesh>::vertex_descriptor;
@@ -90,12 +138,20 @@ public:
         const double epsilon,
         const std::pair<double, double>& edge_len_min_max,
         Mesh& mesh,
-        const std::optional<double> chen_beta = std::nullopt)
+        const std::optional<double> chen_beta = std::nullopt,
+        const std::optional<double> relative_error = std::nullopt)
         : epsilon_(epsilon),
+          relative_error_(relative_error),
           min_edge_length_(edge_len_min_max.first),
           max_edge_length_(edge_len_min_max.second)
     {
-        if (!(epsilon_ > 0.0)) {
+        if (relative_error_.has_value()) {
+            if (!(*relative_error_ > 0.0) ||
+                !(*relative_error_ < 1.0)) {
+                throw std::invalid_argument(
+                    "RAR relative_error must be in (0, 1)");
+            }
+        } else if (!(epsilon_ > 0.0)) {
             throw std::invalid_argument("RAR epsilon must be > 0");
         }
         if (!(min_edge_length_ > 0.0) ||
@@ -389,11 +445,18 @@ private:
 
         for (const vertex_descriptor v : vertices(mesh)) {
             const double kappa = vertex_curvature(v, mesh);
-            const double target = rar_target_length(
-                kappa,
-                epsilon_,
-                min_edge_length_,
-                max_edge_length_);
+            const double target =
+                relative_error_.has_value()
+                    ? rar_curvature_normalized_target_length(
+                          kappa,
+                          *relative_error_,
+                          min_edge_length_,
+                          max_edge_length_)
+                    : rar_target_length(
+                          kappa,
+                          epsilon_,
+                          min_edge_length_,
+                          max_edge_length_);
 
             curvature_map_[v] = kappa;
             raw_sizing_map_[v] = target;
@@ -451,6 +514,7 @@ private:
 
 private:
     double epsilon_;
+    std::optional<double> relative_error_;
     double min_edge_length_;
     double max_edge_length_;
     ScalarMap curvature_map_;
