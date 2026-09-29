@@ -67,6 +67,19 @@ inline std::string make_parameterized_stem(
                    cfg.max_edge_length);
         break;
 
+    case FieldType::RARRelative:
+        name
+            << "__eta-"
+            << filename_number(
+                   cfg.relative_error)
+            << "__lmin-"
+            << filename_number(
+                   cfg.min_edge_length)
+            << "__lmax-"
+            << filename_number(
+                   cfg.max_edge_length);
+        break;
+
     case FieldType::CGALAdaptiveChen:
     case FieldType::RARChen:
         name
