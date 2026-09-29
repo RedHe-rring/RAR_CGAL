@@ -8,7 +8,6 @@
 
 namespace rar {
 
-namespace PMP = CGAL::Polygon_mesh_processing;
 
 // Sharp-feature threshold used by all remeshing backends.
 // An interior edge is marked as a feature when the angle between the
@@ -47,7 +46,7 @@ inline FeatureConstraints detect_feature_constraints(
         vertex_map[v] = false;
     }
 
-    PMP::detect_sharp_edges(
+    CGAL::Polygon_mesh_processing::detect_sharp_edges(
         mesh,
         kFeatureAngleDegrees,
         edge_map,
