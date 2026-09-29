@@ -6,6 +6,7 @@ namespace rar {
 
 enum class FieldType {
     CGALAdaptive,
+    CGALAdaptiveChen,
     RAR,
     RARChen,
     CSF
@@ -17,6 +18,8 @@ inline const char* field_type_name(
     switch (type) {
     case FieldType::CGALAdaptive:
         return "cgal-adaptive";
+    case FieldType::CGALAdaptiveChen:
+        return "cgal-adaptive-chen";
     case FieldType::RAR:
         return "rar";
     case FieldType::RARChen:
@@ -37,7 +40,7 @@ struct RemeshConfig {
     FieldType field_type =
         FieldType::CGALAdaptive;
 
-    // RAR / RAR+Chen / CGAL-Adaptive field parameters.
+    // RAR / RAR+Chen / CGAL-Adaptive / CGAL-Adaptive+Chen parameters.
     double epsilon = 1e-3;
     double min_edge_length = 1e-3;
     double max_edge_length = 5e-1;
