@@ -1,5 +1,6 @@
 #pragma once
 
+#include "rar/FeatureConstraints.h"
 #include "rar/FieldExport.h"
 #include "rar/RARSizingField.h"
 #include "rar/RemeshConfig.h"
@@ -54,12 +55,21 @@ inline RARFieldStats run_rar_like_field_cgal_remeshing(
         }
     }
 
+    const FeatureConstraints feature_constraints =
+        detect_feature_constraints(mesh);
+
     PMP::isotropic_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
         CGAL::parameters::number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(cfg.relaxation_steps)
+            .edge_is_constrained_map(
+                feature_constraints.edge_map)
+            .vertex_is_constrained_map(
+                feature_constraints.vertex_map)
+            .collapse_constraints(false)
+            .relax_constraints(true)
             .do_project(cfg.do_project)
     );
 
