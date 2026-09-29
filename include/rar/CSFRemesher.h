@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rar/CSFSizingField.h"
+#include "rar/FeatureConstraints.h"
 #include "rar/FieldExport.h"
 #include "rar/RemeshConfig.h"
 #include "rar/Types.h"
@@ -38,6 +39,9 @@ inline CSFFieldStats run_csf_field_cgal_remeshing(
             });
     }
 
+    const FeatureConstraints feature_constraints =
+        detect_feature_constraints(mesh);
+
     PMP::isotropic_remeshing(
         faces(mesh),
         sizing_field,
@@ -46,6 +50,12 @@ inline CSFFieldStats run_csf_field_cgal_remeshing(
             number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(
                 cfg.relaxation_steps)
+            .edge_is_constrained_map(
+                feature_constraints.edge_map)
+            .vertex_is_constrained_map(
+                feature_constraints.vertex_map)
+            .collapse_constraints(false)
+            .relax_constraints(true)
             .do_project(cfg.do_project)
     );
 
