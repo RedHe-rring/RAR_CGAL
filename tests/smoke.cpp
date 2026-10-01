@@ -1,3 +1,4 @@
+#include "rar/CGALAdaptiveSizing.h"
 #include "rar/OutputNaming.h"
 #include "rar/RARSizingField.h"
 #include "rar/RemeshConfig.h"
@@ -61,6 +62,56 @@ int main() {
         std::abs(clamped_small - 0.1) <
         1e-12);
 
+    const double radius_floor =
+        rar::cgal_adaptive_radius_target_length(
+            2.0,
+            0.01,
+            1e-6,
+            10.0);
+    assert(std::abs(radius_floor - 0.5) < 1e-12);
+
+    const double below_half_radius =
+        rar::cgal_adaptive_radius_target_length(
+            2.0,
+            0.2,
+            1e-6,
+            10.0);
+    const double expected_below_half_radius =
+        std::sqrt(6.0 * 0.2 * 0.5 - 3.0 * 0.2 * 0.2);
+    assert(
+        std::abs(
+            below_half_radius -
+            expected_below_half_radius) <
+        1e-12);
+
+    const double at_half_radius =
+        rar::cgal_adaptive_radius_target_length(
+            2.0,
+            0.25,
+            1e-6,
+            10.0);
+    assert(
+        std::abs(at_half_radius - 0.75) <
+        1e-12);
+
+    const double above_half_radius =
+        rar::cgal_adaptive_radius_target_length(
+            2.0,
+            0.3,
+            1e-6,
+            10.0);
+    assert(
+        std::abs(above_half_radius - 0.5) <
+        1e-12);
+
+    const double flat_radius_field =
+        rar::cgal_adaptive_radius_target_length(
+            0.0,
+            0.01,
+            0.1,
+            2.0);
+    assert(std::abs(flat_radius_field - 2.0) < 1e-12);
+
     rar::RemeshConfig naming;
     naming.input_path =
         "models/sample.obj";
@@ -119,6 +170,20 @@ int main() {
     assert(
         cgal_chen_auto_name ==
         "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__field-cgal-adaptive-chen.obj");
+
+    naming.field_type =
+        rar::FieldType::CGALAdaptiveRadiusChen;
+
+    const std::string cgal_radius_chen_auto_name =
+        std::filesystem::path(
+            rar::make_auto_output_path(
+                naming))
+            .filename()
+            .string();
+
+    assert(
+        cgal_radius_chen_auto_name ==
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__field-cgal-adaptive-radius-chen.obj");
 
     naming.field_type =
         rar::FieldType::RARChen;

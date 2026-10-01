@@ -1,5 +1,6 @@
 #pragma once
 
+#include "rar/CGALAdaptiveSizing.h"
 #include "rar/ChenSizingCorrection.h"
 #include "rar/FeatureConstraints.h"
 #include "rar/FieldExport.h"
@@ -57,6 +58,18 @@ inline void validate_cgal_adaptive_config(
         cfg.max_edge_length) {
         throw std::invalid_argument(
             "min_edge_length must be <= max_edge_length");
+    }
+}
+
+inline void validate_cgal_adaptive_chen_config(
+    const RemeshConfig& cfg)
+{
+    validate_cgal_adaptive_config(cfg);
+
+    if (!(cfg.chen_beta > 1.0) ||
+        !std::isfinite(cfg.chen_beta)) {
+        throw std::invalid_argument(
+            "beta must be > 1 for CGAL adaptive Chen modes");
     }
 }
 
@@ -159,46 +172,15 @@ inline void run_cgal_adaptive_remeshing(
     );
 }
 
+template <typename ScalarMap, typename ExportFn>
 inline CGALAdaptiveChenStats
-run_cgal_adaptive_chen_remeshing(
+run_cgal_adaptive_chen_from_maps(
     Mesh& mesh,
-    const RemeshConfig& cfg)
+    const RemeshConfig& cfg,
+    const ScalarMap raw_map,
+    const ScalarMap corrected_map,
+    ExportFn export_field)
 {
-    validate_cgal_adaptive_config(cfg);
-
-    if (!(cfg.chen_beta > 1.0) ||
-        !std::isfinite(cfg.chen_beta)) {
-        throw std::invalid_argument(
-            "beta must be > 1 for cgal-adaptive-chen");
-    }
-
-    const std::pair<double, double>
-        edge_min_max{
-            cfg.min_edge_length,
-            cfg.max_edge_length
-        };
-
-    PMP::Adaptive_sizing_field<Mesh>
-        raw_field(
-            cfg.epsilon,
-            edge_min_max,
-            faces(mesh),
-            mesh);
-
-    auto raw_map =
-        mesh.add_property_map<
-            Mesh::Vertex_index,
-            double>(
-                "v:cgal_adaptive_raw_target_length",
-                cfg.max_edge_length).first;
-
-    auto corrected_map =
-        mesh.add_property_map<
-            Mesh::Vertex_index,
-            double>(
-                "v:cgal_adaptive_chen_target_length",
-                cfg.max_edge_length).first;
-
     CGALAdaptiveChenStats stats;
     stats.vertex_count =
         num_vertices(mesh);
@@ -212,11 +194,8 @@ run_cgal_adaptive_chen_remeshing(
 
     for (const Mesh::Vertex_index v :
          vertices(mesh)) {
-        const double value =
-            CGAL::to_double(
-                raw_field.at(v, mesh));
+        const double value = raw_map[v];
 
-        raw_map[v] = value;
         corrected_map[v] = value;
 
         raw_sum += value;
@@ -285,22 +264,7 @@ run_cgal_adaptive_chen_remeshing(
         stats.corrected_sizing_min = 0.0;
     }
 
-    export_cgal_adaptive_field(
-        mesh,
-        cfg,
-        raw_field,
-        [&](auto curvature_fn) {
-            write_rar_chen_field_diagnostics(
-                mesh,
-                cfg.export_field_prefix,
-                curvature_fn,
-                [&](const Mesh::Vertex_index v) {
-                    return raw_map[v];
-                },
-                [&](const Mesh::Vertex_index v) {
-                    return corrected_map[v];
-                });
-        });
+    export_field(raw_map, corrected_map);
 
     PropertyMapSizingField sizing_field(
         corrected_map,
@@ -329,6 +293,156 @@ run_cgal_adaptive_chen_remeshing(
     );
 
     return stats;
+}
+
+inline CGALAdaptiveChenStats
+run_cgal_adaptive_chen_remeshing(
+    Mesh& mesh,
+    const RemeshConfig& cfg)
+{
+    validate_cgal_adaptive_chen_config(cfg);
+
+    const std::pair<double, double>
+        edge_min_max{
+            cfg.min_edge_length,
+            cfg.max_edge_length
+        };
+
+    PMP::Adaptive_sizing_field<Mesh>
+        raw_field(
+            cfg.epsilon,
+            edge_min_max,
+            faces(mesh),
+            mesh);
+
+    auto raw_map =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            double>(
+                "v:cgal_adaptive_raw_target_length",
+                cfg.max_edge_length).first;
+
+    auto corrected_map =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            double>(
+                "v:cgal_adaptive_chen_target_length",
+                cfg.max_edge_length).first;
+
+    for (const Mesh::Vertex_index v : vertices(mesh)) {
+        raw_map[v] =
+            CGAL::to_double(raw_field.at(v, mesh));
+    }
+
+    return run_cgal_adaptive_chen_from_maps(
+        mesh,
+        cfg,
+        raw_map,
+        corrected_map,
+        [&](const auto raw_values,
+            const auto corrected_values) {
+            export_cgal_adaptive_field(
+                mesh,
+                cfg,
+                raw_field,
+                [&](auto curvature_fn) {
+                    write_rar_chen_field_diagnostics(
+                        mesh,
+                        cfg.export_field_prefix,
+                        curvature_fn,
+                        [&](const Mesh::Vertex_index v) {
+                            return raw_values[v];
+                        },
+                        [&](const Mesh::Vertex_index v) {
+                            return corrected_values[v];
+                        });
+                });
+        });
+}
+
+inline CGALAdaptiveChenStats
+run_cgal_adaptive_radius_chen_remeshing(
+    Mesh& mesh,
+    const RemeshConfig& cfg)
+{
+    validate_cgal_adaptive_chen_config(cfg);
+
+    using PrincipalCurvatures =
+        PMP::Principal_curvatures_and_directions<Kernel>;
+
+    auto curvature_map =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            PrincipalCurvatures>(
+                "v:cgal_principal_curvatures",
+                PrincipalCurvatures{}).first;
+
+    PMP::interpolated_corrected_curvatures(
+        mesh,
+        CGAL::parameters::
+            vertex_principal_curvatures_and_directions_map(
+                curvature_map));
+
+    auto raw_map =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            double>(
+                "v:cgal_adaptive_radius_raw_target_length",
+                cfg.max_edge_length).first;
+
+    auto corrected_map =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            double>(
+                "v:cgal_adaptive_radius_chen_target_length",
+                cfg.max_edge_length).first;
+
+    for (const Mesh::Vertex_index v : vertices(mesh)) {
+        const PrincipalCurvatures& pc = curvature_map[v];
+        const double kappa_max =
+            (std::max)(
+                std::abs(CGAL::to_double(pc.min_curvature)),
+                std::abs(CGAL::to_double(pc.max_curvature)));
+
+        raw_map[v] =
+            cgal_adaptive_radius_target_length(
+                kappa_max,
+                cfg.epsilon,
+                cfg.min_edge_length,
+                cfg.max_edge_length);
+    }
+
+    return run_cgal_adaptive_chen_from_maps(
+        mesh,
+        cfg,
+        raw_map,
+        corrected_map,
+        [&](const auto raw_values,
+            const auto corrected_values) {
+            if (!cfg.export_field ||
+                cfg.export_field_prefix.empty()) {
+                return;
+            }
+
+            write_rar_chen_field_diagnostics(
+                mesh,
+                cfg.export_field_prefix,
+                [&](const Mesh::Vertex_index v) {
+                    const PrincipalCurvatures& pc =
+                        curvature_map[v];
+                    return (std::max)(
+                        std::abs(CGAL::to_double(
+                            pc.min_curvature)),
+                        std::abs(CGAL::to_double(
+                            pc.max_curvature)));
+                },
+                [&](const Mesh::Vertex_index v) {
+                    return raw_values[v];
+                },
+                [&](const Mesh::Vertex_index v) {
+                    return corrected_values[v];
+                });
+        });
 }
 
 } // namespace rar

@@ -8,6 +8,7 @@ The executable keeps several adaptive sizing modes side by side:
 
 - `cgal-adaptive`: CGAL 6.1.x `Adaptive_sizing_field`.
 - `cgal-adaptive-chen`: the same CGAL adaptive field followed by the Chen gradient-constrained correction.
+- `cgal-adaptive-radius-chen`: a curvature-radius-guarded CGAL-style field followed by the same Chen correction.
 - `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
 - `rar-chen`: the RAR field followed by the same Chen correction.
 - `csf`: code-oriented curvature-smoothed-field sizing (Lv et al.), passed to the same CGAL backend.
@@ -20,6 +21,24 @@ This separation is intentional. It allows direct experiments on the sizing field
 
 CGAL computes local principal curvatures with
 `interpolated_corrected_curvatures()`, converts them to a curvature-adaptive target length, and uses the result through the `PMPSizingField` interface.
+
+### CGAL-Adaptive radius guard + Chen
+
+The experimental `cgal-adaptive-radius-chen` mode uses
+
+```text
+kappa = max(abs(k_min), abs(k_max))
+r = 1 / kappa
+h0 = max(r, sqrt(6 epsilon r - 3 epsilon^2)),  epsilon <= r / 2
+h0 = r,                                        epsilon >  r / 2
+h0 <- clamp(h0, min_edge, max_edge)
+```
+
+At `epsilon = r / 2`, the first branch gives `h0 = 3 r / 2`; immediately above
+the threshold, the field deliberately falls back to `r`. For zero or
+non-finite curvature, `h0` is `max_edge`. The resulting `h0` is the per-vertex
+upper bound passed to the Chen gradient-constrained correction, so the
+corrected value cannot exceed this raw value.
 
 ### RAR-field-CGAL
 

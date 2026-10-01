@@ -68,6 +68,7 @@ inline std::string make_parameterized_stem(
         break;
 
     case FieldType::CGALAdaptiveChen:
+    case FieldType::CGALAdaptiveRadiusChen:
     case FieldType::RARChen:
         name
             << "__eps-"
