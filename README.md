@@ -29,16 +29,17 @@ The experimental `cgal-adaptive-radius-chen` mode uses
 ```text
 kappa = max(abs(k_min), abs(k_max))
 r = 1 / kappa
-h0 = max(r, sqrt(6 epsilon r - 3 epsilon^2)),  epsilon <= r / 2
-h0 = r,                                        epsilon >  r / 2
+h0 = sqrt(6 epsilon r - 3 epsilon^2),  epsilon <= r / 2
+h0 = r,                                epsilon >  r / 2
 h0 <- clamp(h0, min_edge, max_edge)
 ```
 
 At `epsilon = r / 2`, the first branch gives `h0 = 3 r / 2`; immediately above
-the threshold, the field deliberately falls back to `r`. For zero or
-non-finite curvature, `h0` is `max_edge`. The resulting `h0` is the per-vertex
-upper bound passed to the Chen gradient-constrained correction, so the
-corrected value cannot exceed this raw value.
+the threshold, the field deliberately falls back to `r`. For small epsilon,
+the formula is allowed to produce `h0 < r`; `r` is not a lower bound. For zero
+or non-finite curvature, `h0` is `max_edge`. The resulting `h0` is the
+per-vertex upper bound passed to the Chen gradient-constrained correction, so
+the corrected value cannot exceed this raw value.
 
 ### RAR-field-CGAL
 

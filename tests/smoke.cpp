@@ -62,13 +62,18 @@ int main() {
         std::abs(clamped_small - 0.1) <
         1e-12);
 
-    const double radius_floor =
+    const double below_radius =
         rar::cgal_adaptive_radius_target_length(
             2.0,
             0.01,
             1e-6,
             10.0);
-    assert(std::abs(radius_floor - 0.5) < 1e-12);
+    const double expected_below_radius =
+        std::sqrt(6.0 * 0.01 * 0.5 - 3.0 * 0.01 * 0.01);
+    assert(
+        std::abs(below_radius - expected_below_radius) <
+        1e-12);
+    assert(below_radius < 0.5);
 
     const double below_half_radius =
         rar::cgal_adaptive_radius_target_length(

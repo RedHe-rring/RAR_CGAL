@@ -9,12 +9,12 @@ namespace rar {
 // Curvature-radius-guarded variant of CGAL's adaptive target-length formula.
 //
 // Let r = 1 / kappa_max. For epsilon <= r / 2, retain the CGAL-style formula
-// with r as its lower bound. Once epsilon exceeds half the local radius, the
-// tolerance is considered too large for the local geometric scale and the
-// target falls back to r:
+// without imposing r as a lower bound. Once epsilon exceeds half the local
+// radius, the tolerance is considered too large for the local geometric scale
+// and the target falls back to r:
 //
-//   h = max(r, sqrt(6 epsilon r - 3 epsilon^2)),  epsilon <= r / 2
-//   h = r,                                       epsilon >  r / 2
+//   h = sqrt(6 epsilon r - 3 epsilon^2),  epsilon <= r / 2
+//   h = r,                               epsilon >  r / 2
 //
 // This is intentionally discontinuous at epsilon = r / 2: the value at the
 // threshold is 3 r / 2, while values immediately above it fall back to r. The
@@ -48,10 +48,8 @@ inline double cgal_adaptive_radius_target_length(
         const double value_sq =
             6.0 * epsilon * radius -
             3.0 * epsilon * epsilon;
-        const double formula_value =
-            std::sqrt((std::max)(0.0, value_sq));
         target_length =
-            (std::max)(radius, formula_value);
+            std::sqrt((std::max)(0.0, value_sq));
     }
 
     return (std::max)(
