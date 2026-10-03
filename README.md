@@ -480,14 +480,20 @@ isotropic remeshing backend is called. The `cgal-adaptive-chen` mode applies the
 same correction to CGAL's adaptive field, which makes it possible to test Chen
 as a field-independent post-processing step.
 
-For each input vertex, the raw RAR target length is denoted by `h0`. The
-correction solves
+For each input vertex, the raw target length is denoted by `h0`, and `A_i` is
+one third of the total area of the incident input triangles. The correction
+solves
 
 ```text
-minimize    sum_i (h_i - h0_i)^2
+minimize    sum_i A_i / h_i^2
 subject to  ||grad h||_T^2 <= log(beta)^2   for every input triangle T
             min_edge <= h_i <= h0_i
 ```
+
+The objective approximates the element count of an isotropic surface mesh.
+Because every corrected value is bounded above by its raw value, the optimizer
+can satisfy the gradation constraint only by retaining or reducing local target
+lengths; it never coarsens beyond `h0`.
 
 Thus the experiment changes only the initial sizing field; split/collapse/relax
 still use the same `PMP::isotropic_remeshing()` backend as `--field rar`.

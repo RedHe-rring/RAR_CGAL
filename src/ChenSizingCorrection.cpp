@@ -63,14 +63,16 @@ inline double constraint_value(
     return dot(grad, grad);
 }
 
-class ChenProjectionNLP final : public Ipopt::TNLP {
+class ChenElementCountNLP final : public Ipopt::TNLP {
 public:
-    ChenProjectionNLP(
+    ChenElementCountNLP(
         std::vector<double> h0,
+        std::vector<double> vertex_areas,
         std::vector<TriangleConstraint> constraints,
         const double beta,
         const double hmin)
         : h0_(std::move(h0)),
+          vertex_areas_(std::move(vertex_areas)),
           constraints_(std::move(constraints)),
           hmin_(hmin),
           gradient_limit_sq_(
@@ -78,6 +80,11 @@ public:
           start_(h0_),
           solution_(h0_)
     {
+        if (vertex_areas_.size() != h0_.size()) {
+            throw std::invalid_argument(
+                "Chen vertex-area and sizing arrays must have the same size");
+        }
+
         // The feasible set is never empty because the constant field h=hmin
         // satisfies every gradient constraint and the variable bounds.
         //
@@ -193,11 +200,12 @@ public:
         }
 
         obj_value = 0.0;
-
         for (Ipopt::Index i = 0; i < n; ++i) {
-            const double d =
-                x[i] - h0_[static_cast<std::size_t>(i)];
-            obj_value += d * d;
+            const std::size_t index =
+                static_cast<std::size_t>(i);
+            obj_value +=
+                vertex_areas_[index] /
+                (x[i] * x[i]);
         }
 
         return true;
@@ -214,9 +222,11 @@ public:
         }
 
         for (Ipopt::Index i = 0; i < n; ++i) {
+            const std::size_t index =
+                static_cast<std::size_t>(i);
             grad_f[i] =
-                2.0 *
-                (x[i] - h0_[static_cast<std::size_t>(i)]);
+                -2.0 * vertex_areas_[index] /
+                (x[i] * x[i] * x[i]);
         }
 
         return true;
@@ -338,6 +348,7 @@ public:
 
 private:
     std::vector<double> h0_;
+    std::vector<double> vertex_areas_;
     std::vector<TriangleConstraint> constraints_;
     double hmin_;
     double gradient_limit_sq_;
@@ -348,7 +359,8 @@ private:
 
 std::vector<TriangleConstraint> build_constraints(
     const Mesh& mesh,
-    const std::map<Mesh::Vertex_index, std::size_t>& dense_index)
+    const std::map<Mesh::Vertex_index, std::size_t>& dense_index,
+    std::vector<double>& vertex_areas)
 {
     std::vector<TriangleConstraint> result;
     result.reserve(num_faces(mesh));
@@ -376,6 +388,18 @@ std::vector<TriangleConstraint> build_constraints(
             continue;
         }
 
+        const std::array<std::size_t, 3> vertex_ids = {
+            dense_index.at(v0),
+            dense_index.at(v1),
+            dense_index.at(v2)
+        };
+        const double vertex_area_share =
+            std::sqrt(normal_sq) / 6.0;
+
+        for (const std::size_t vertex_id : vertex_ids) {
+            vertex_areas[vertex_id] += vertex_area_share;
+        }
+
         const Kernel::Vector_3 grad0 =
             CGAL::cross_product(
                 normal,
@@ -395,11 +419,7 @@ std::vector<TriangleConstraint> build_constraints(
             normal_sq;
 
         TriangleConstraint c;
-        c.vertex_ids = {
-            dense_index.at(v0),
-            dense_index.at(v1),
-            dense_index.at(v2)
-        };
+        c.vertex_ids = vertex_ids;
         c.basis_gradients = {
             to_vec3(grad0),
             to_vec3(grad1),
@@ -467,8 +487,12 @@ ChenCorrectionStats apply_chen_sizing_correction(
         h0.push_back(value);
     }
 
+    std::vector<double> vertex_areas(h0.size(), 0.0);
     const std::vector<TriangleConstraint> constraints =
-        build_constraints(mesh, dense_index);
+        build_constraints(
+            mesh,
+            dense_index,
+            vertex_areas);
 
     ChenCorrectionStats stats;
     stats.constraint_count = constraints.size();
@@ -476,14 +500,19 @@ ChenCorrectionStats apply_chen_sizing_correction(
         max_gradient(constraints, h0);
 
     if (h0.empty() || constraints.empty()) {
+        for (std::size_t i = 0; i < h0.size(); ++i) {
+            stats.objective +=
+                vertex_areas[i] / (h0[i] * h0[i]);
+        }
         stats.max_gradient_after =
             stats.max_gradient_before;
         return stats;
     }
 
-    Ipopt::SmartPtr<ChenProjectionNLP> problem =
-        new ChenProjectionNLP(
+    Ipopt::SmartPtr<ChenElementCountNLP> problem =
+        new ChenElementCountNLP(
             h0,
+            vertex_areas,
             constraints,
             beta,
             hmin);
@@ -545,8 +574,8 @@ ChenCorrectionStats apply_chen_sizing_correction(
             ++stats.changed_vertex_count;
         }
 
-        const double d = value - h0[i];
-        stats.objective += d * d;
+        stats.objective +=
+            vertex_areas[i] / (value * value);
     }
 
     std::vector<double> corrected(solution.size(), 0.0);

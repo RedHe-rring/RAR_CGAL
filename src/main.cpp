@@ -278,7 +278,7 @@ void print_rar_field_stats(
             << "  changed vertices        = "
             << s.chen_changed_vertex_count << " / "
             << s.vertex_count << '\n'
-            << "  projection objective    = "
+            << "  estimated element objective = "
             << s.chen_objective << '\n';
     }
 }
@@ -305,7 +305,7 @@ void print_cgal_adaptive_chen_stats(
         << "  changed vertices        = "
         << s.chen_changed_vertex_count << " / "
         << s.vertex_count << '\n'
-        << "  projection objective    = "
+        << "  estimated element objective = "
         << s.chen_objective << '\n';
 }
 
