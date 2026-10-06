@@ -6,19 +6,20 @@
 
 namespace rar {
 
+inline constexpr double kCGALAdaptiveRadiusThresholdRatio = 0.183;
+
 // Curvature-radius-guarded variant of CGAL's adaptive target-length formula.
 //
-// Let r = 1 / kappa_max. For epsilon <= r / 2, retain the CGAL-style formula
-// without imposing r as a lower bound. Once epsilon exceeds half the local
-// radius, the tolerance is considered too large for the local geometric scale
-// and the target falls back to r:
+// Let r = 1 / kappa_max. For epsilon <= 0.183 r, retain the CGAL-style
+// formula without imposing r as a lower bound. Once epsilon exceeds that
+// threshold, the target falls back to r:
 //
-//   h = sqrt(6 epsilon r - 3 epsilon^2),  epsilon <= r / 2
-//   h = r,                               epsilon >  r / 2
+//   h = sqrt(6 epsilon r - 3 epsilon^2),  epsilon <= 0.183 r
+//   h = r,                               epsilon >  0.183 r
 //
-// This is intentionally discontinuous at epsilon = r / 2: the value at the
-// threshold is 3 r / 2, while values immediately above it fall back to r. The
-// configured global edge-length bounds are applied last.
+// The literal 0.183 ratio is a rounded version of the point where the formula
+// equals r, so only a small jump remains at the threshold. The configured
+// global edge-length bounds are applied last.
 inline double cgal_adaptive_radius_target_length(
     const double kappa_max,
     const double epsilon,
@@ -44,7 +45,8 @@ inline double cgal_adaptive_radius_target_length(
     const double radius = 1.0 / kappa_max;
     double target_length = radius;
 
-    if (epsilon <= 0.5 * radius) {
+    if (epsilon <=
+        kCGALAdaptiveRadiusThresholdRatio * radius) {
         const double value_sq =
             6.0 * epsilon * radius -
             3.0 * epsilon * epsilon;

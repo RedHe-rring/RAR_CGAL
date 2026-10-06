@@ -88,18 +88,22 @@ inline void export_cgal_adaptive_field(
     using PrincipalCurvatures =
         PMP::Principal_curvatures_and_directions<Kernel>;
 
-    auto curvature_map =
+    const auto curvature_property =
         mesh.add_property_map<
             Mesh::Vertex_index,
             PrincipalCurvatures>(
                 "v:cgal_principal_curvatures",
-                PrincipalCurvatures{}).first;
+                PrincipalCurvatures{});
+    const auto curvature_map =
+        curvature_property.first;
 
-    PMP::interpolated_corrected_curvatures(
-        mesh,
-        CGAL::parameters::
-            vertex_principal_curvatures_and_directions_map(
-                curvature_map));
+    if (curvature_property.second) {
+        PMP::interpolated_corrected_curvatures(
+            mesh,
+            CGAL::parameters::
+                vertex_principal_curvatures_and_directions_map(
+                    curvature_map));
+    }
 
     target_writer(
         [&](const Mesh::Vertex_index v) {
@@ -151,7 +155,10 @@ inline void run_cgal_adaptive_remeshing(
 
     const FeatureConstraints
         feature_constraints =
-            detect_feature_constraints(mesh);
+            make_feature_constraints(
+                mesh,
+                cfg.preserve_features,
+                cfg.feature_angle_degrees);
 
     PMP::isotropic_remeshing(
         faces(mesh),
@@ -272,7 +279,10 @@ run_cgal_adaptive_chen_from_maps(
 
     const FeatureConstraints
         feature_constraints =
-            detect_feature_constraints(mesh);
+            make_feature_constraints(
+                mesh,
+                cfg.preserve_features,
+                cfg.feature_angle_degrees);
 
     PMP::isotropic_remeshing(
         faces(mesh),
@@ -370,18 +380,22 @@ run_cgal_adaptive_radius_chen_remeshing(
     using PrincipalCurvatures =
         PMP::Principal_curvatures_and_directions<Kernel>;
 
-    auto curvature_map =
+    const auto curvature_property =
         mesh.add_property_map<
             Mesh::Vertex_index,
             PrincipalCurvatures>(
                 "v:cgal_principal_curvatures",
-                PrincipalCurvatures{}).first;
+                PrincipalCurvatures{});
+    const auto curvature_map =
+        curvature_property.first;
 
-    PMP::interpolated_corrected_curvatures(
-        mesh,
-        CGAL::parameters::
-            vertex_principal_curvatures_and_directions_map(
-                curvature_map));
+    if (curvature_property.second) {
+        PMP::interpolated_corrected_curvatures(
+            mesh,
+            CGAL::parameters::
+                vertex_principal_curvatures_and_directions_map(
+                    curvature_map));
+    }
 
     auto raw_map =
         mesh.add_property_map<

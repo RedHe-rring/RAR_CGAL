@@ -45,6 +45,7 @@ struct RemeshConfig {
 
     // RAR / RAR+Chen / CGAL-Adaptive / CGAL-Adaptive+Chen parameters.
     double epsilon = 1e-3;
+    bool epsilon_is_explicit = false;
     double min_edge_length = 1e-3;
     double max_edge_length = 5e-1;
 
@@ -58,6 +59,11 @@ struct RemeshConfig {
     unsigned int iterations = 5;
     unsigned int relaxation_steps = 3;
     bool do_project = true;
+
+    // Sharp-feature detection and preservation. CGAL still treats mesh
+    // boundary edges as constrained independently of this setting.
+    bool preserve_features = false;
+    double feature_angle_degrees = 50.0;
 };
 
 } // namespace rar

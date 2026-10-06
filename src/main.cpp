@@ -1,3 +1,4 @@
+#include "rar/AutoEpsilon.h"
 #include "rar/CGALAdaptiveRemesher.h"
 #include "rar/CSFRemesher.h"
 #include "rar/MeshOutput.h"
@@ -12,6 +13,7 @@
 #include <CGAL/IO/polygon_mesh_io.h>
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -30,13 +32,16 @@ void print_usage(const char* exe) {
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
         << "  --field <name>          cgal-adaptive | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
-        << "  --epsilon <value>       RAR/CGAL approximation tolerance (default: 0.001)\n"
+        << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
         << "  --beta <value>          Chen progressive factor for *-chen modes (default: 1.2)\n"
         << "  --mesh-scale <value>    CSF global target-length scale (default: 1.0)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
         << "  --relax-steps <n>       Relaxation steps per iteration (default: 3)\n"
+        << "  --preserve-features     Detect and preserve sharp features (default: off)\n"
+        << "  --no-preserve-features  Disable sharp-feature detection and preservation\n"
+        << "  --feature-angle <deg>   Sharp-feature angle threshold (default: 50)\n"
         << "  --export-field <prefix> Override field-output stem (.ply/.csv added)\n"
         << "  --no-export-field       Disable default field export\n"
         << "  --no-project            Disable projection to the input surface\n\n"
@@ -139,6 +144,7 @@ rar::RemeshConfig parse_args(
         } else if (arg == "--epsilon") {
             cfg.epsilon =
                 std::stod(require_value(arg));
+            cfg.epsilon_is_explicit = true;
         } else if (arg == "--min-edge") {
             cfg.min_edge_length =
                 std::stod(require_value(arg));
@@ -161,6 +167,16 @@ rar::RemeshConfig parse_args(
                 static_cast<unsigned int>(
                     std::stoul(
                         require_value(arg)));
+        } else if (arg ==
+                   "--preserve-features") {
+            cfg.preserve_features = true;
+        } else if (arg ==
+                   "--no-preserve-features") {
+            cfg.preserve_features = false;
+        } else if (arg ==
+                   "--feature-angle") {
+            cfg.feature_angle_degrees =
+                std::stod(require_value(arg));
         } else if (arg == "--export-field") {
             cfg.export_field_prefix =
                 require_value(arg);
@@ -180,6 +196,12 @@ rar::RemeshConfig parse_args(
         }
     }
 
+    return cfg;
+}
+
+void finalize_output_paths(
+    rar::RemeshConfig& cfg)
+{
     if (cfg.output_path.empty()) {
         cfg.output_path =
             rar::make_auto_output_path(cfg);
@@ -191,13 +213,19 @@ rar::RemeshConfig parse_args(
         cfg.export_field_prefix =
             rar::make_auto_field_prefix(cfg);
     }
-
-    return cfg;
 }
 
 void validate_config(
     const rar::RemeshConfig& cfg)
 {
+    if (!std::isfinite(
+            cfg.feature_angle_degrees) ||
+        cfg.feature_angle_degrees < 0.0 ||
+        cfg.feature_angle_degrees > 180.0) {
+        throw std::invalid_argument(
+            "feature_angle must be in [0, 180]");
+    }
+
     if (cfg.field_type ==
         rar::FieldType::CSF) {
         if (!(cfg.csf_mesh_scale > 0.0)) {
@@ -347,6 +375,10 @@ void print_config(
     } else {
         std::cout
             << ", epsilon=" << cfg.epsilon
+            << ", epsilon_source="
+            << (cfg.epsilon_is_explicit
+                    ? "explicit"
+                    : "auto")
             << ", min_edge="
             << cfg.min_edge_length
             << ", max_edge="
@@ -372,6 +404,18 @@ void print_config(
         << (cfg.do_project
                 ? "true"
                 : "false")
+        << ", preserve_features="
+        << (cfg.preserve_features
+                ? "true"
+                : "false");
+
+    if (cfg.preserve_features) {
+        std::cout
+            << ", feature_angle="
+            << cfg.feature_angle_degrees;
+    }
+
+    std::cout
         << ", export_field="
         << (cfg.export_field
                 ? "true"
@@ -393,9 +437,8 @@ int main(
     char** argv)
 {
     try {
-        const rar::RemeshConfig cfg =
+        rar::RemeshConfig cfg =
             parse_args(argc, argv);
-        validate_config(cfg);
 
         rar::Mesh mesh;
 
@@ -429,8 +472,51 @@ int main(
             return EXIT_FAILURE;
         }
 
+        rar::AutoEpsilonStats auto_epsilon_stats;
+        const bool use_auto_epsilon =
+            cfg.field_type != rar::FieldType::CSF &&
+            !cfg.epsilon_is_explicit;
+
+        if (use_auto_epsilon) {
+            auto_epsilon_stats =
+                rar::estimate_auto_epsilon(
+                    mesh,
+                    cfg.epsilon);
+            cfg.epsilon = auto_epsilon_stats.epsilon;
+        }
+
+        validate_config(cfg);
+        finalize_output_paths(cfg);
+
         print_mesh_stats(mesh, "Input");
         print_config(cfg);
+
+        if (use_auto_epsilon) {
+            std::cout
+                << "Auto epsilon:\n"
+                << "  valid curvature vertices = "
+                << auto_epsilon_stats.valid_vertex_count
+                << '\n'
+                << "  valid vertex area         = "
+                << auto_epsilon_stats.valid_vertex_area
+                << '\n';
+
+            if (auto_epsilon_stats.used_fallback) {
+                std::cout
+                    << "  curvature fallback       = true\n"
+                    << "  fallback epsilon         = "
+                    << auto_epsilon_stats.epsilon
+                    << '\n';
+            } else {
+                std::cout
+                    << "  weighted p90 kappa       = "
+                    << auto_epsilon_stats.weighted_p90_kappa
+                    << '\n'
+                    << "  epsilon = 0.183 / kappa  = "
+                    << auto_epsilon_stats.epsilon
+                    << '\n';
+            }
+        }
 
         std::cout
             << (cfg.output_path_auto

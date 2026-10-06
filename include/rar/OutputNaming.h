@@ -98,6 +98,17 @@ inline std::string make_parameterized_stem(
         << cfg.relaxation_steps
         << "__proj-"
         << (cfg.do_project ? "on" : "off")
+        << "__features-"
+        << (cfg.preserve_features ? "on" : "off");
+
+    if (cfg.preserve_features) {
+        name
+            << "__feature-angle-"
+            << filename_number(
+                   cfg.feature_angle_degrees);
+    }
+
+    name
         << "__field-"
         << field_type_name(cfg.field_type);
 

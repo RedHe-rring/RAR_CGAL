@@ -521,13 +521,18 @@ ChenCorrectionStats apply_chen_sizing_correction(
         IpoptApplicationFactory();
 
     if (!app->Options()->SetStringValue("linear_solver", "mumps") ||
-        !app->Options()->SetIntegerValue("print_level", 0) ||
+        !app->Options()->SetIntegerValue("print_level", 3) ||
         !app->Options()->SetStringValue("sb", "yes") ||
         !app->Options()->SetStringValue(
             "hessian_approximation",
             "limited-memory") ||
         !app->Options()->SetNumericValue("tol", 1e-8) ||
         !app->Options()->SetNumericValue("constr_viol_tol", 1e-8) ||
+        !app->Options()->SetNumericValue("acceptable_tol", 1e-2) ||
+        !app->Options()->SetNumericValue(
+            "acceptable_constr_viol_tol",
+            1e-6) ||
+        !app->Options()->SetIntegerValue("acceptable_iter", 10) ||
         !app->Options()->SetIntegerValue("max_iter", 1000)) {
         throw std::runtime_error(
             "Failed to configure IPOPT for Chen correction");

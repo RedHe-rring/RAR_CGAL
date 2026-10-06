@@ -8,12 +8,6 @@
 
 namespace rar {
 
-
-// Sharp-feature threshold used by all remeshing backends.
-// An interior edge is marked as a feature when the angle between the
-// normals of its two incident triangles is greater than this value.
-inline constexpr double kFeatureAngleDegrees = 20.0;
-
 struct FeatureConstraints {
     Mesh::Property_map<Mesh::Edge_index, bool> edge_map;
     Mesh::Property_map<Mesh::Vertex_index, bool> vertex_map;
@@ -21,8 +15,10 @@ struct FeatureConstraints {
     std::size_t fixed_feature_vertex_count = 0;
 };
 
-inline FeatureConstraints detect_feature_constraints(
-    Mesh& mesh)
+inline FeatureConstraints make_feature_constraints(
+    Mesh& mesh,
+    const bool preserve_features,
+    const double feature_angle_degrees)
 {
     auto edge_map =
         mesh.add_property_map<Mesh::Edge_index, bool>(
@@ -46,9 +42,18 @@ inline FeatureConstraints detect_feature_constraints(
         vertex_map[v] = false;
     }
 
+    if (!preserve_features) {
+        return {
+            edge_map,
+            vertex_map,
+            0,
+            0
+        };
+    }
+
     CGAL::Polygon_mesh_processing::detect_sharp_edges(
         mesh,
-        kFeatureAngleDegrees,
+        feature_angle_degrees,
         edge_map,
         CGAL::parameters::vertex_feature_degree_map(
             feature_degree_map));

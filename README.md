@@ -29,17 +29,38 @@ The experimental `cgal-adaptive-radius-chen` mode uses
 ```text
 kappa = max(abs(k_min), abs(k_max))
 r = 1 / kappa
-h0 = sqrt(6 epsilon r - 3 epsilon^2),  epsilon <= r / 2
-h0 = r,                                epsilon >  r / 2
+h0 = sqrt(6 epsilon r - 3 epsilon^2),  epsilon <= 0.183 r
+h0 = r,                                epsilon >  0.183 r
 h0 <- clamp(h0, min_edge, max_edge)
 ```
 
-At `epsilon = r / 2`, the first branch gives `h0 = 3 r / 2`; immediately above
-the threshold, the field deliberately falls back to `r`. For small epsilon,
-the formula is allowed to produce `h0 < r`; `r` is not a lower bound. For zero
-or non-finite curvature, `h0` is `max_edge`. The resulting `h0` is the
-per-vertex upper bound passed to the Chen gradient-constrained correction, so
-the corrected value cannot exceed this raw value.
+The `0.183` factor is the requested rounded transition ratio; the exact point
+where the formula equals `r` is approximately `0.183503`. At the implemented
+threshold the formula is approximately `0.998765 r`, and immediately above it
+the field falls back to `r`. For smaller epsilon the formula can produce
+`h0 < r`; `r` is not a lower bound. For zero or non-finite curvature, `h0` is
+`max_edge`. The resulting `h0` is the per-vertex upper bound passed to the Chen
+gradient-constrained correction, so the corrected value cannot exceed this raw
+value.
+
+When `--epsilon` is omitted, epsilon is selected automatically for every
+epsilon-based field. The program computes
+`kappa = max(abs(k_min), abs(k_max))` at the input vertices, discards zero and
+non-finite values, and takes the vertex-area-weighted 90th percentile. It then
+uses
+
+```text
+epsilon = 0.183 / weighted_p90(kappa)
+```
+
+where each vertex weight is one third of the total area of its incident input
+triangles. Consequently, only the highest-curvature approximately 10% of the
+weighted surface enters the `h0 = r` branch. This makes the default scale with
+the input geometry while avoiding the median rule's approximately 50% branch
+transition. If no valid curvature sample exists, the fallback is
+`epsilon = 0.001`. An explicit `--epsilon <value>` always overrides the
+automatic value. The resolved epsilon is printed and used in automatic output
+filenames.
 
 ### RAR-field-CGAL
 
@@ -184,6 +205,25 @@ build\Release\rar_cgal.exe input.obj output_no_project.obj ^
 
 The RAR mode prints the initial curvature and target-length min/mean/max statistics to make abnormal fields easier to detect.
 
+### Sharp-feature preservation
+
+Sharp-feature detection and preservation are disabled by default. Enable them
+with `--preserve-features`; the default dihedral-angle threshold is 50 degrees:
+
+```bat
+build\Release\rar_cgal.exe input.obj output_features.obj ^
+  --field rar ^
+  --preserve-features ^
+  --feature-angle 50
+```
+
+Edges whose adjacent face normals differ by more than the threshold are passed
+to CGAL as constrained edges. Feature endpoints and junctions are fixed, while
+regular degree-2 feature vertices can relax along their feature polylines.
+`--no-preserve-features` explicitly restores the default disabled state. Mesh
+boundary edges remain subject to CGAL's built-in boundary handling regardless
+of this switch.
+
 ## Automatic output naming
 
 The output mesh argument is optional.
@@ -215,10 +255,10 @@ the program writes the result next to the input mesh using a parameter-aware fil
 
 ```text
 RAR / CGAL-Adaptive:
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj
 
 CSF:
-input__scale-1p2__it-5__relax-3__proj-on__field-csf.obj
+input__scale-1p2__it-5__relax-3__proj-on__features-off__field-csf.obj
 ```
 
 The naming skeleton is:
@@ -251,14 +291,15 @@ max-edge=0.5
 iterations=5
 relax-steps=3
 projection=on
+preserve-features=off
 ```
 
 the mesh is written normally, while field artifacts are grouped in a same-named folder:
 
 ```text
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj
 
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar/
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar/
 ├── field.ply
 └── field.csv
 ```
@@ -321,9 +362,9 @@ tools/colorize_ply.py
 With the default field layout, an experiment now looks like:
 
 ```text
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj
 
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar/
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar/
 ├── field.ply
 └── field.csv
 ```
@@ -332,7 +373,7 @@ Color the target-length field directly inside that folder:
 
 ```bat
 python tools\colorize_ply.py ^
-  input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__field-rar\field.ply ^
+  input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar\field.ply ^
   --property target_length ^
   --invert
 ```
@@ -470,7 +511,7 @@ This is the useful comparison for the current stage: change the field, hold the 
 2. visualize `curvature` and `target_length` for CGAL-Adaptive vs RAR on the same difficult meshes;
 3. add edge `length / target_length` distribution statistics;
 4. implement RAR Eq. (6) tangential relaxation as a separate mode;
-5. add feature/boundary constraints after the smooth-surface baseline is stable.
+5. compare feature preservation on/off across sharp and smooth inputs.
 
 ## RAR + Chen sizing-field correction
 

@@ -56,7 +56,10 @@ inline RARFieldStats run_rar_like_field_cgal_remeshing(
     }
 
     const FeatureConstraints feature_constraints =
-        detect_feature_constraints(mesh);
+        make_feature_constraints(
+            mesh,
+            cfg.preserve_features,
+            cfg.feature_angle_degrees);
 
     PMP::isotropic_remeshing(
         faces(mesh),
