@@ -1,0 +1,9 @@
+{
+  "numpy": "2.3.5",
+  "pandas": "2.3.3",
+  "trimesh": "4.11.3",
+  "matplotlib": "3.10.6",
+  "python": "3.13.9 | packaged by Anaconda, Inc. | (main, Oct 21 2025, 19:09:58) [MSC v.1929 64 bit (AMD64)]",
+  "vtk": "9.6.2",
+  "failures": []
+}

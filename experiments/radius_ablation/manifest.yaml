@@ -1,0 +1,122 @@
+experiment:
+  id: radius-mechanism-ablation-main
+  title: Radius Guard Cap / Recovery ablation
+  status: complete
+  hypothesis: Recovery reduces wine over-refinement; Cap explains shark improvement;
+    camel changes little
+  owner: local workspace user
+  created_at: '2026-10-08'
+code:
+  repository: RedHe-rring/RAR_CGAL
+  branch: exp/chen-element-count-objective
+  commit: 828d6ee20a0b851e330e5fd470627208498ceb92
+  dirty: true
+  baseline_commit: 5f460e724eb8e94e84f5308880499089523c8eaf
+  tags: []
+  tracked_dirty: false
+  status: '?? data/
+
+    ?? "rar_field_viewer.exe - \345\277\253\346\215\267\346\226\271\345\274\217.lnk"
+
+    ?? tools/compare_wine.py
+
+    ?? tools/diagnose_sizing.py
+
+    ?? tools/sizing_diagnostics.zip
+
+    ?? tools/sizing_diagnostics/
+
+    ?? tools/test_diagnostics.py'
+  analysis_commit: 4086afc9d03824eb6e3b3a13f4f9a2b443b7f9ab
+build:
+  preset_or_generator: Visual Studio 17 2022
+  build_type: Release
+  compiler: MSVC 19.44.35224.0
+  dependency_lock_or_triplet: vcpkg x64-windows; CGAL 6.1.1-I-900
+  executable: E:\adaiso\compare\rar_csf_our\RAR_CGAL\build\Release\rar_cgal.exe
+  sha256: b5860d1b142d53a7a96b88366cd38f8f440762445226d2d6dc98048bddaafe54
+  generator: Visual Studio 17 2022
+  CGAL: 6.1.1-I-900
+  triplet: x64-windows
+data:
+  manifest_id: manifest.json
+  inputs:
+  - path: E:\adaiso\compare\rar_csf_our\RAR_CGAL\data\wine_glass24.ply
+    sha256: 3db3720b0de2baabe9a2b9f64c5e04f80a5c7f11b3119f5501b7faf18577e5c8
+    epsilon: '0.0214378565'
+    provenance: existing repository data; no substitution
+  - path: E:\adaiso\compare\rar_csf_our\RAR_CGAL\data\camel2.ply
+    sha256: 3ed936b344e9b8bd2e20d0796c0b6c53b1e79f0a6dd5b86019ab650e645a7878
+    epsilon: '0.001'
+    provenance: existing repository data; no substitution
+  - path: E:\adaiso\compare\rar_csf_our\RAR_CGAL\data\shark13.ply
+    sha256: 610d1ad1b2f3a42e19879e3a7da419ed0285d68f29700cc35d68adee74487004
+    epsilon: '0.003106642746'
+    provenance: existing repository data; no substitution
+design:
+  fixed_parameters:
+    min_edge: 0.001
+    max_edge: 0.5
+    iterations: 5
+    relax_steps: 3
+    preserve_features: false
+    projection: true
+    Chen: false
+    samples_per_direction: 80000
+    reference_seed: 731
+    output_seed: 343
+  factors:
+    models:
+    - wine_glass24
+    - camel2
+    - shark13
+    modes:
+    - cgal-adaptive
+    - cgal-adaptive-pmap
+    - cgal-adaptive-radius-cap
+    - cgal-adaptive-radius-recovery
+    - cgal-adaptive-radius
+  seeds:
+  - 731
+  - 343
+  primary_metrics:
+  - F
+  - CD2
+  - P99
+  - Tri.Q P05
+  - local region density
+  acceptance_criteria:
+  - CTest pass
+  - 15 completed cells
+  - initial fields equal across modes
+  - legacy outputs identical
+  stop_conditions:
+  - missing input or command failure recorded without substitution
+execution:
+  command: python experiments/radius_ablation/run.py --results experiments/radius_ablation/results/main
+  started_at: '2026-10-08T22:58:42.771743'
+  finished_at: '2026-10-08T22:59:52.263826'
+  host: Windows-11-10.0.26100-SP0
+  artifact_root: E:\adaiso\compare\rar_csf_our\RAR_CGAL\experiments\radius_ablation\results\main
+results:
+  status: success
+  summary_files:
+  - summary.csv
+  - field_summary.json
+  - local_density.csv
+  - REPORT.md
+  - volume_validation.json
+  - legacy_comparison.json
+  failures: []
+  observations:
+  - Native and Pmap outputs byte-identical for all three inputs
+  - Recovery explains Wine face-count reduction
+  - Cap explains Shark improvement
+  - Camel effects are local
+  - All output meshes self-intersect; volume change unavailable
+  conclusion: Mechanisms separated under the fixed protocol; no universal accuracy
+    or validity guarantee
+  follow_ups:
+  - multi-seed and equal-face-count comparisons
+  - thin-surface correspondence
+  - self-intersection localization

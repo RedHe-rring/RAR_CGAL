@@ -1,0 +1,257 @@
+{
+  "executable_sha256": "7ed2125558b1097b7950c08703f89b6d2bd923c75ccf5b122236f052cd66464f",
+  "records": [
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\data\\wine_glass24.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\data\\wine_glass24.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":false,\"bounds_volume\":true}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": false,
+      "bounds_volume": true
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-pmap\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-pmap\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-radius-cap\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-radius-cap\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-radius-recovery\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-radius-recovery\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-radius\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\wine_glass24\\cgal-adaptive-radius\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\data\\camel2.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\data\\camel2.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-pmap\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-pmap\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-radius-cap\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-radius-cap\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-radius-recovery\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-radius-recovery\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-radius\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\camel2\\cgal-adaptive-radius\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\data\\shark13.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\data\\shark13.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-pmap\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-pmap\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-radius-cap\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-radius-cap\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-radius-recovery\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-radius-recovery\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    },
+    {
+      "path": "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-radius\\output.ply",
+      "command": [
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\build\\Release\\rar_validate_volume.exe",
+        "E:\\adaiso\\compare\\rar_csf_our\\RAR_CGAL\\experiments\\radius_ablation\\results\\main\\shark13\\cgal-adaptive-radius\\output.ply"
+      ],
+      "returncode": 0,
+      "stdout": "{\"closed\":true,\"degenerate_faces\":0,\"self_intersects\":true,\"bounds_volume\":false}\n",
+      "stderr": "",
+      "closed": true,
+      "degenerate_faces": 0,
+      "self_intersects": true,
+      "bounds_volume": false
+    }
+  ]
+}

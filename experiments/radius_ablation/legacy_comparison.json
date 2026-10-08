@@ -1,0 +1,62 @@
+[
+  {
+    "model": "wine_glass24",
+    "mode": "cgal-adaptive",
+    "returncode": 0,
+    "baseline_commit": "5f460e724eb8e94e84f5308880499089523c8eaf",
+    "baseline_exe_sha256": "be0329b304d6c421a3b690677f453542f41c591508164557b79bb0ebdef35ebb",
+    "baseline_sha256": "165eca96bac6d23bd7aee0f8ee5f89b0d2acfbb398b917634606e206480b7ab2",
+    "current_sha256": "165eca96bac6d23bd7aee0f8ee5f89b0d2acfbb398b917634606e206480b7ab2",
+    "identical": true
+  },
+  {
+    "model": "wine_glass24",
+    "mode": "cgal-adaptive-radius",
+    "returncode": 0,
+    "baseline_commit": "5f460e724eb8e94e84f5308880499089523c8eaf",
+    "baseline_exe_sha256": "be0329b304d6c421a3b690677f453542f41c591508164557b79bb0ebdef35ebb",
+    "baseline_sha256": "58f159b032c408ca70bb4dbf880d7dfc659ea1dc7998f99339947c8607e49fdc",
+    "current_sha256": "58f159b032c408ca70bb4dbf880d7dfc659ea1dc7998f99339947c8607e49fdc",
+    "identical": true
+  },
+  {
+    "model": "camel2",
+    "mode": "cgal-adaptive",
+    "returncode": 0,
+    "baseline_commit": "5f460e724eb8e94e84f5308880499089523c8eaf",
+    "baseline_exe_sha256": "be0329b304d6c421a3b690677f453542f41c591508164557b79bb0ebdef35ebb",
+    "baseline_sha256": "794df0c8686478a2b70ca8413eea432394083d9e8267bfb40dedeb6d7a55eafe",
+    "current_sha256": "794df0c8686478a2b70ca8413eea432394083d9e8267bfb40dedeb6d7a55eafe",
+    "identical": true
+  },
+  {
+    "model": "camel2",
+    "mode": "cgal-adaptive-radius",
+    "returncode": 0,
+    "baseline_commit": "5f460e724eb8e94e84f5308880499089523c8eaf",
+    "baseline_exe_sha256": "be0329b304d6c421a3b690677f453542f41c591508164557b79bb0ebdef35ebb",
+    "baseline_sha256": "c801b926e7eb55d169cd6957da3367d23c8800a6631259c03c7effdc292d2541",
+    "current_sha256": "c801b926e7eb55d169cd6957da3367d23c8800a6631259c03c7effdc292d2541",
+    "identical": true
+  },
+  {
+    "model": "shark13",
+    "mode": "cgal-adaptive",
+    "returncode": 0,
+    "baseline_commit": "5f460e724eb8e94e84f5308880499089523c8eaf",
+    "baseline_exe_sha256": "be0329b304d6c421a3b690677f453542f41c591508164557b79bb0ebdef35ebb",
+    "baseline_sha256": "1e2de7c3cb047c4dc8a04f4dc348c1c242568e003e5ff075531971890bfc187a",
+    "current_sha256": "1e2de7c3cb047c4dc8a04f4dc348c1c242568e003e5ff075531971890bfc187a",
+    "identical": true
+  },
+  {
+    "model": "shark13",
+    "mode": "cgal-adaptive-radius",
+    "returncode": 0,
+    "baseline_commit": "5f460e724eb8e94e84f5308880499089523c8eaf",
+    "baseline_exe_sha256": "be0329b304d6c421a3b690677f453542f41c591508164557b79bb0ebdef35ebb",
+    "baseline_sha256": "d171870a748be76b7374a8d1259cd581a3a0892a37bc8d67e60c428a99bf3c8f",
+    "current_sha256": "d171870a748be76b7374a8d1259cd581a3a0892a37bc8d67e60c428a99bf3c8f",
+    "identical": true
+  }
+]
