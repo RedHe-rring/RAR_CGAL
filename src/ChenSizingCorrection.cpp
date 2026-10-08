@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iostream>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -77,48 +78,37 @@ public:
           hmin_(hmin),
           gradient_limit_sq_(
               std::log(beta) * std::log(beta)),
-          start_(h0_),
+          stage_upper_bound_(h0_.size(), hmin_),
+          start_(h0_.size(), hmin_),
           solution_(h0_)
     {
         if (vertex_areas_.size() != h0_.size()) {
             throw std::invalid_argument(
                 "Chen vertex-area and sizing arrays must have the same size");
         }
+    }
 
-        // The feasible set is never empty because the constant field h=hmin
-        // satisfies every gradient constraint and the variable bounds.
-        //
-        // Starting IPOPT directly from h0 can be strongly infeasible. Build a
-        // feasible warm start by uniformly shrinking the variation of h0
-        // around the constant hmin field. Since grad(hmin)=0,
-        //
-        //   grad(hmin + s * (h0 - hmin)) = s * grad(h0).
-        //
-        // Choosing s from the maximum initial gradient therefore guarantees
-        // the triangle gradient bounds up to a small safety margin.
-        double max_gradient_sq = 0.0;
-        for (const TriangleConstraint& c : constraints_) {
-            max_gradient_sq =
-                (std::max)(
-                    max_gradient_sq,
-                    constraint_value(c, h0_.data()));
+    void set_stage(
+        const double upper_bound_fraction,
+        const std::vector<double>& starting_values)
+    {
+        if (starting_values.size() != h0_.size() ||
+            !std::isfinite(upper_bound_fraction) ||
+            upper_bound_fraction < 0.0 ||
+            upper_bound_fraction > 1.0) {
+            throw std::invalid_argument(
+                "Invalid Chen continuation stage");
         }
 
-        const double max_gradient =
-            std::sqrt((std::max)(0.0, max_gradient_sq));
-        const double gradient_limit =
-            std::sqrt(gradient_limit_sq_);
-
-        if (max_gradient > gradient_limit &&
-            max_gradient > 0.0) {
-            const double scale =
-                0.95 * gradient_limit / max_gradient;
-
-            for (std::size_t i = 0; i < start_.size(); ++i) {
-                start_[i] =
-                    hmin_ +
-                    scale * (h0_[i] - hmin_);
-            }
+        for (std::size_t i = 0; i < h0_.size(); ++i) {
+            stage_upper_bound_[i] =
+                hmin_ + upper_bound_fraction * (h0_[i] - hmin_);
+            start_[i] =
+                (std::max)(
+                    hmin_,
+                    (std::min)(
+                        stage_upper_bound_[i],
+                        starting_values[i]));
         }
     }
 
@@ -152,7 +142,7 @@ public:
 
         for (Ipopt::Index i = 0; i < n; ++i) {
             x_l[i] = hmin_;
-            x_u[i] = h0_[static_cast<std::size_t>(i)];
+            x_u[i] = stage_upper_bound_[static_cast<std::size_t>(i)];
         }
 
         for (Ipopt::Index i = 0; i < m; ++i) {
@@ -352,6 +342,7 @@ private:
     std::vector<TriangleConstraint> constraints_;
     double hmin_;
     double gradient_limit_sq_;
+    std::vector<double> stage_upper_bound_;
     std::vector<double> start_;
     std::vector<double> solution_;
 
@@ -499,6 +490,21 @@ ChenCorrectionStats apply_chen_sizing_correction(
     stats.max_gradient_before =
         max_gradient(constraints, h0);
 
+    const double gradient_limit = std::log(beta);
+
+    // The objective decreases as any h_i increases. Therefore, if h0 already
+    // satisfies every Chen constraint, it is the componentwise largest
+    // feasible field and is the global minimizer.
+    if (stats.max_gradient_before <= gradient_limit) {
+        for (std::size_t i = 0; i < h0.size(); ++i) {
+            stats.objective +=
+                vertex_areas[i] / (h0[i] * h0[i]);
+        }
+        stats.max_gradient_after =
+            stats.max_gradient_before;
+        return stats;
+    }
+
     if (h0.empty() || constraints.empty()) {
         for (std::size_t i = 0; i < h0.size(); ++i) {
             stats.objective +=
@@ -517,6 +523,24 @@ ChenCorrectionStats apply_chen_sizing_correction(
             beta,
             hmin);
 
+    // Scale the raw field around hmin just enough to build a non-flat,
+    // strictly feasible seed. Then grow the allowed upper bound geometrically
+    // so each solve starts from the previous feasible solution.
+    const double seed_fraction =
+        (std::min)(
+            1.0,
+            0.5 * gradient_limit / stats.max_gradient_before);
+    std::vector<double> continuation_start(h0.size(), hmin);
+    for (std::size_t i = 0; i < h0.size(); ++i) {
+        continuation_start[i] =
+            hmin + seed_fraction * (h0[i] - hmin);
+    }
+
+    constexpr double kContinuationGrowth = 10.0;
+    double stage_fraction =
+        (std::min)(1.0, seed_fraction * kContinuationGrowth);
+    problem->set_stage(stage_fraction, continuation_start);
+
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app =
         IpoptApplicationFactory();
 
@@ -526,6 +550,8 @@ ChenCorrectionStats apply_chen_sizing_correction(
         !app->Options()->SetStringValue(
             "hessian_approximation",
             "limited-memory") ||
+        !app->Options()->SetNumericValue("bound_relax_factor", 0.0) ||
+        !app->Options()->SetStringValue("honor_original_bounds", "yes") ||
         !app->Options()->SetNumericValue("tol", 1e-8) ||
         !app->Options()->SetNumericValue("constr_viol_tol", 1e-8) ||
         !app->Options()->SetNumericValue("acceptable_tol", 1e-2) ||
@@ -546,15 +572,46 @@ ChenCorrectionStats apply_chen_sizing_correction(
             "Failed to initialize IPOPT for Chen correction");
     }
 
-    const Ipopt::ApplicationReturnStatus solve_status =
+    std::cout
+        << "Chen continuation upper-bound fraction: "
+        << stage_fraction << '\n';
+    Ipopt::ApplicationReturnStatus solve_status =
         app->OptimizeTNLP(problem);
 
-    if (solve_status != Ipopt::Solve_Succeeded &&
-        solve_status != Ipopt::Solved_To_Acceptable_Level &&
-        solve_status != Ipopt::Feasible_Point_Found) {
+    const auto is_accepted_status =
+        [](const Ipopt::ApplicationReturnStatus status) {
+            return status == Ipopt::Solve_Succeeded ||
+                status == Ipopt::Solved_To_Acceptable_Level ||
+                status == Ipopt::Feasible_Point_Found;
+        };
+
+    if (!is_accepted_status(solve_status)) {
         throw std::runtime_error(
-            "IPOPT failed while solving the Chen sizing correction (status " +
+            "IPOPT failed in a Chen continuation stage (status " +
             std::to_string(static_cast<int>(solve_status)) + ")");
+    }
+
+    while (stage_fraction < 1.0) {
+        const double next_stage_fraction =
+            (std::min)(
+                1.0,
+                stage_fraction * kContinuationGrowth);
+        problem->set_stage(
+            next_stage_fraction,
+            problem->solution());
+
+        std::cout
+            << "Chen continuation upper-bound fraction: "
+            << next_stage_fraction << '\n';
+        solve_status = app->ReOptimizeTNLP(problem);
+
+        if (!is_accepted_status(solve_status)) {
+            throw std::runtime_error(
+                "IPOPT failed in a Chen continuation stage (status " +
+                std::to_string(static_cast<int>(solve_status)) + ")");
+        }
+
+        stage_fraction = next_stage_fraction;
     }
 
     const std::vector<double>& solution =

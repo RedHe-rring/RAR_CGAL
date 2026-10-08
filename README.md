@@ -536,6 +536,15 @@ Because every corrected value is bounded above by its raw value, the optimizer
 can satisfy the gradation constraint only by retaining or reducing local target
 lengths; it never coarsens beyond `h0`.
 
+When `h0` violates the gradation bound, IPOPT uses an upper-bound continuation
+with warm starts. It begins from a feasible scaled variation of `h0`, then
+increases the allowed upper bound geometrically by a factor of 10 until the
+full raw field is reached. If `h0` already satisfies the gradient bound, it is
+used directly because it is the componentwise largest feasible field for this
+objective. IPOPT variable-bound relaxation is disabled so clamping the returned
+field to `[min_edge, h0]` does not introduce gradient violations on very small
+triangles.
+
 Thus the experiment changes only the initial sizing field; split/collapse/relax
 still use the same `PMP::isotropic_remeshing()` backend as `--field rar`.
 
