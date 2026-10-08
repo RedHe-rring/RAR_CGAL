@@ -53,7 +53,8 @@ def field_summary(df):
 def plot_field(name, mesh, df, dest):
     a=df.vertex_area.to_numpy(); t=df.epsilon_kappa.to_numpy(); r=df.ratio.to_numpy()
     fig,axes=plt.subplots(1,2,figsize=(11,4))
-    axes[0].hist(np.maximum(t,1e-8), bins=np.geomspace(1e-8,max(t.max(),3),90),weights=a/a.sum())
+    lower=max(float(t[t>0].min())*.95,1e-16) if np.any(t>0) else 1e-8
+    axes[0].hist(np.maximum(t,lower), bins=np.geomspace(lower,max(t.max(),3)*1.01,90),weights=a/a.sum())
     axes[0].set_xscale('log'); axes[0].set_xlabel('epsilon * kappa')
     for cutoff in [.183,1.8165,2]: axes[0].axvline(cutoff,lw=.8,color='crimson')
     axes[1].hist(r,bins=np.geomspace(max(r.min()*.999,1e-5),max(r.max()*1.001,1.01),90),weights=a/a.sum())
@@ -108,8 +109,11 @@ def main():
                 q=quality(out); row={**base,**q}
                 row['watertight']=bool(out.is_watertight);row['winding_consistent']=bool(out.is_winding_consistent)
                 row['components']=len(trimesh.graph.connected_components(out.face_adjacency,nodes=np.arange(len(out.faces))))
-                row['volume_valid']=bool(mesh.is_volume and out.is_volume)
-                row['relative_volume_change']=(float(out.volume/mesh.volume-1) if row['volume_valid'] else None)
+                row['volume_topology_candidate']=bool(mesh.is_volume and out.is_volume)
+                # Watertightness alone does not establish a physically valid volume.
+                # validate_volumes.py fills this only after CGAL intersection/orientation checks.
+                row['volume_valid']=False
+                row['relative_volume_change']=None
                 stdout=(cell/'stdout.log').read_text(encoding='utf-8')
                 match=re.search(r'Remeshing runtime:\s*([\d.eE+-]+)',stdout)
                 row['runtime_seconds']=float(match.group(1)) if match else None
