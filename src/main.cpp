@@ -32,6 +32,7 @@ void print_usage(const char* exe) {
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
         << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
+        << "  --remesh-backend <name> cgal | custom (default: cgal)\n"
         << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
@@ -50,9 +51,9 @@ void print_usage(const char* exe) {
         << "  cgal-adaptive-radius  Curvature-radius-guarded CGAL-style field, without Chen correction.\n"
         << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
         << "  cgal-adaptive-radius-chen  Curvature-radius-guarded CGAL field followed by Chen correction.\n"
-        << "  rar                 RAR cotangent-curvature sizing field with CGAL local operators.\n"
+        << "  rar                 RAR cotangent-curvature sizing field with the selected remeshing backend.\n"
         << "  rar-chen            RAR field followed by Chen gradient-constrained correction.\n"
-        << "  csf                 CSF code-oriented smoothed-curvature field with CGAL local operators.\n";
+        << "  csf                 CSF code-oriented smoothed-curvature field with the selected remeshing backend.\n";
 }
 
 rar::FieldType parse_field_type(
@@ -147,6 +148,17 @@ rar::RemeshConfig parse_args(
             cfg.field_type =
                 parse_field_type(
                     require_value(arg));
+        } else if (arg == "--remesh-backend") {
+            const std::string value = require_value(arg);
+            if (value == "cgal") {
+                cfg.remesh_backend = rar::RemeshBackend::CGAL;
+            } else if (value == "custom") {
+                cfg.remesh_backend = rar::RemeshBackend::Custom;
+            } else {
+                throw std::invalid_argument(
+                    "Unknown remesh backend '" + value +
+                    "'. Expected cgal or custom.");
+            }
         } else if (arg == "--epsilon") {
             cfg.epsilon =
                 std::stod(require_value(arg));
@@ -420,6 +432,8 @@ void print_config(
     }
 
     std::cout
+        << ", remesh_backend="
+        << rar::remesh_backend_name(cfg.remesh_backend)
         << ", iterations=" << cfg.iterations
         << ", relax_steps="
         << cfg.relaxation_steps

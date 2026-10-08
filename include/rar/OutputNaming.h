@@ -111,7 +111,9 @@ inline std::string make_parameterized_stem(
 
     name
         << "__field-"
-        << field_type_name(cfg.field_type);
+        << field_type_name(cfg.field_type)
+        << "__backend-"
+        << remesh_backend_name(cfg.remesh_backend);
 
     return name.str();
 }

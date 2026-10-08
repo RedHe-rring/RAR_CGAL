@@ -6,7 +6,7 @@
 #include "rar/RemeshConfig.h"
 #include "rar/Types.h"
 
-#include <CGAL/Polygon_mesh_processing/remesh.h>
+#include "rar/RemeshBackend.h"
 
 #include <optional>
 #include <utility>
@@ -61,10 +61,11 @@ inline RARFieldStats run_rar_like_field_cgal_remeshing(
             cfg.preserve_features,
             cfg.feature_angle_degrees);
 
-    PMP::isotropic_remeshing(
+    dispatch_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
+        cfg.remesh_backend,
         CGAL::parameters::number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(cfg.relaxation_steps)
             .edge_is_constrained_map(

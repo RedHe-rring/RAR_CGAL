@@ -1,6 +1,15 @@
 # RAR_CGAL
 
-A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing fields while keeping a stable common remeshing backend.
+A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing fields and local remeshing operators.
+
+## Remeshing backends
+
+All sizing modes accept `--remesh-backend cgal|custom` (default: `cgal`).
+`custom` uses the editable headers under `include/rar/custom_remesh/`, initially
+copied from the installed CGAL `6.1.1-I-900` implementation with the same behavior.
+Automatic output filenames include the backend; explicitly supplied output paths
+remain caller-controlled. See [the local operator guide](include/rar/custom_remesh/README.md)
+for editing locations, provenance, usage and parity tests.
 
 ## Implemented modes
 
@@ -10,11 +19,12 @@ The executable keeps several adaptive sizing modes side by side:
 - `cgal-adaptive-radius`: curvature-radius-guarded CGAL-style field used directly by the remesher, without Chen correction.
 - `cgal-adaptive-chen`: the same CGAL adaptive field followed by the Chen gradient-constrained correction.
 - `cgal-adaptive-radius-chen`: a curvature-radius-guarded CGAL-style field followed by the same Chen correction.
-- `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
+- `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the selected remeshing backend.
 - `rar-chen`: the RAR field followed by the same Chen correction.
-- `csf`: code-oriented curvature-smoothed-field sizing (Lv et al.), passed to the same CGAL backend.
+- `csf`: code-oriented curvature-smoothed-field sizing (Lv et al.), passed to the selected remeshing backend.
 
-This separation is intentional. It allows direct experiments on the sizing field without changing split/collapse/flip infrastructure.
+Sizing field and operator backend are selected independently, allowing either one
+to be varied while holding the other fixed.
 
 ## Current methodological status
 
@@ -116,7 +126,7 @@ area-weighted vertex normals
 -> target_L = mean_edge_length * mesh_scale * multiplier
 ```
 
-The field construction is author-code-faithful; the remeshing backend is still deliberately held fixed as CGAL `isotropic_remeshing()`. Therefore this mode is named `CSF-field-CGAL`, not an exact reproduction of the author's complete remesher.
+The field construction is author-code-faithful. With the default `cgal` backend this remains the `CSF-field-CGAL` comparison, not an exact reproduction of the author's complete remesher. The `custom` backend allows independent operator experiments.
 
 ## Requirements
 
@@ -174,7 +184,7 @@ build\Release\rar_cgal.exe input.obj output_cgal_chen.obj ^
 
 The initial CGAL adaptive target lengths are copied to a vertex property map,
 projected by the same Chen optimization used by `rar-chen`, and the corrected
-field is then consumed by the same CGAL local remeshing backend. The exported
+field is then consumed by the selected local remeshing backend. The exported
 field contains `curvature`, `raw_target_length`, and `target_length`.
 
 ### RAR paper-oriented field
@@ -259,10 +269,10 @@ the program writes the result next to the input mesh using a parameter-aware fil
 
 ```text
 RAR / CGAL-Adaptive:
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal.obj
 
 CSF:
-input__scale-1p2__it-5__relax-3__proj-on__features-off__field-csf.obj
+input__scale-1p2__it-5__relax-3__proj-on__features-off__field-csf__backend-cgal.obj
 ```
 
 The naming skeleton is:
@@ -270,7 +280,7 @@ The naming skeleton is:
 ```text
 input
 + field-specific parameters
-+ common CGAL-backend parameters
++ common remeshing parameters and backend selection
 + field tag
 ```
 
@@ -301,9 +311,9 @@ preserve-features=off
 the mesh is written normally, while field artifacts are grouped in a same-named folder:
 
 ```text
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal.obj
 
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar/
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal/
 ├── field.ply
 └── field.csv
 ```
@@ -366,9 +376,9 @@ tools/colorize_ply.py
 With the default field layout, an experiment now looks like:
 
 ```text
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal.obj
 
-input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar/
+input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal/
 ├── field.ply
 └── field.csv
 ```
@@ -377,7 +387,7 @@ Color the target-length field directly inside that folder:
 
 ```bat
 python tools\colorize_ply.py ^
-  input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar\field.ply ^
+  input__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal\field.ply ^
   --property target_length ^
   --invert
 ```
@@ -492,7 +502,7 @@ The Python `tools/colorize_ply.py` utility remains available for scripted figure
 ## Architecture
 
 ```text
-                              CGAL isotropic_remeshing
+                              selected remeshing backend
                                         |
                  +----------------------+----------------------+
                  |                      |                      |
@@ -562,8 +572,8 @@ Validation allows bound roundoff of `1e-12 * max(1, abs(h0_i))`, clamps it to th
 stage bounds, and then checks `||grad h||^2 <= log(beta)^2 + 1e-6`, matching
 IPOPT's configured acceptable constraint tolerance.
 
-Thus the experiment changes only the initial sizing field; split/collapse/relax
-still use the same `PMP::isotropic_remeshing()` backend as `--field rar`.
+With the backend held fixed, this experiment changes only the initial sizing
+field; split/collapse/relax use the same selected backend as `--field rar`.
 
 IPOPT is optional at build time but required to run `--field rar-chen`.
 With vcpkg, install it for the same triplet used by CGAL:

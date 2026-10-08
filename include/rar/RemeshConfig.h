@@ -4,6 +4,13 @@
 
 namespace rar {
 
+enum class RemeshBackend { CGAL, Custom };
+
+inline const char* remesh_backend_name(const RemeshBackend backend)
+{
+    return backend == RemeshBackend::Custom ? "custom" : "cgal";
+}
+
 enum class FieldType {
     CGALAdaptive,
     CGALAdaptiveRadius,
@@ -58,7 +65,8 @@ struct RemeshConfig {
     // CSF field parameter.
     double csf_mesh_scale = 1.0;
 
-    // Common CGAL remeshing backend parameters.
+    // Common remeshing backend parameters.
+    RemeshBackend remesh_backend = RemeshBackend::CGAL;
     unsigned int iterations = 5;
     unsigned int relaxation_steps = 3;
     bool do_project = true;

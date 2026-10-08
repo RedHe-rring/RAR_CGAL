@@ -154,7 +154,7 @@ int main() {
 
     assert(
         rar_auto_name ==
-        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar.obj");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal.obj");
 
     naming.output_path =
         rar::make_auto_output_path(naming);
@@ -175,7 +175,7 @@ int main() {
             .parent_path()
             .filename()
             .string() ==
-        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-rar__backend-cgal");
 
     naming.field_type =
         rar::FieldType::CGALAdaptiveChen;
@@ -189,7 +189,7 @@ int main() {
 
     assert(
         cgal_chen_auto_name ==
-        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__features-off__field-cgal-adaptive-chen.obj");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__features-off__field-cgal-adaptive-chen__backend-cgal.obj");
 
     naming.field_type =
         rar::FieldType::CGALAdaptiveRadius;
@@ -202,7 +202,7 @@ int main() {
 
     assert(
         cgal_radius_auto_name ==
-        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-cgal-adaptive-radius.obj");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__it-5__relax-3__proj-on__features-off__field-cgal-adaptive-radius__backend-cgal.obj");
 
     naming.field_type =
         rar::FieldType::CGALAdaptiveRadiusChen;
@@ -216,7 +216,7 @@ int main() {
 
     assert(
         cgal_radius_chen_auto_name ==
-        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__features-off__field-cgal-adaptive-radius-chen.obj");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__features-off__field-cgal-adaptive-radius-chen__backend-cgal.obj");
 
     naming.field_type =
         rar::FieldType::RARChen;
@@ -230,7 +230,7 @@ int main() {
 
     assert(
         rar_chen_auto_name ==
-        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__features-off__field-rar-chen.obj");
+        "sample__eps-0p001__lmin-0p001__lmax-0p5__beta-1p2__it-5__relax-3__proj-on__features-off__field-rar-chen__backend-cgal.obj");
 
     naming.field_type =
         rar::FieldType::CSF;
@@ -245,7 +245,7 @@ int main() {
 
     assert(
         csf_auto_name ==
-        "sample__scale-1p2__it-5__relax-3__proj-on__features-off__field-csf.obj");
+        "sample__scale-1p2__it-5__relax-3__proj-on__features-off__field-csf__backend-cgal.obj");
 
     naming.preserve_features = true;
     naming.feature_angle_degrees = 50.0;
@@ -259,7 +259,7 @@ int main() {
 
     assert(
         features_auto_name ==
-        "sample__scale-1p2__it-5__relax-3__proj-on__features-on__feature-angle-50__field-csf.obj");
+        "sample__scale-1p2__it-5__relax-3__proj-on__features-on__feature-angle-50__field-csf__backend-cgal.obj");
 
     assert(naming.export_field);
 

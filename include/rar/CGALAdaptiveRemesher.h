@@ -10,7 +10,7 @@
 
 #include <CGAL/Polygon_mesh_processing/Adaptive_sizing_field.h>
 #include <CGAL/Polygon_mesh_processing/interpolated_corrected_curvatures.h>
-#include <CGAL/Polygon_mesh_processing/remesh.h>
+#include "rar/RemeshBackend.h"
 #include <CGAL/number_utils.h>
 
 #include <algorithm>
@@ -164,10 +164,11 @@ inline void run_cgal_adaptive_remeshing(
                 cfg.preserve_features,
                 cfg.feature_angle_degrees);
 
-    PMP::isotropic_remeshing(
+    dispatch_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
+        cfg.remesh_backend,
         CGAL::parameters::
             number_of_iterations(
                 cfg.iterations)
@@ -270,10 +271,11 @@ inline void run_cgal_adaptive_radius_remeshing(
             cfg.preserve_features,
             cfg.feature_angle_degrees);
 
-    PMP::isotropic_remeshing(
+    dispatch_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
+        cfg.remesh_backend,
         CGAL::parameters::
             number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(cfg.relaxation_steps)
@@ -394,10 +396,11 @@ run_cgal_adaptive_chen_from_maps(
                 cfg.preserve_features,
                 cfg.feature_angle_degrees);
 
-    PMP::isotropic_remeshing(
+    dispatch_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
+        cfg.remesh_backend,
         CGAL::parameters::
             number_of_iterations(
                 cfg.iterations)

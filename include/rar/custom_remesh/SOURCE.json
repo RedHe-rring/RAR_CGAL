@@ -1,0 +1,22 @@
+{
+  "source_version": "6.1.1-I-900",
+  "source_version_nr": 1060110900,
+  "source_root": "E:\\dev\\vcpkg\\installed\\x64-windows\\include\\CGAL\\Polygon_mesh_processing",
+  "files": [
+    {
+      "source": "remesh.h",
+      "local": "Remesh.h",
+      "source_sha256": "4bf9ba1cbaff42ae7da6d94d89832d701db3699e044f13df45419e47f8d08047"
+    },
+    {
+      "source": "internal/Isotropic_remeshing/remesh_impl.h",
+      "local": "IncrementalRemesher.h",
+      "source_sha256": "b03c4594bf0e6caa8964ad2a4a17f40595adba0f6545d0ad66636127c47e717e"
+    },
+    {
+      "source": "tangential_relaxation.h",
+      "local": "TangentialRelaxation.h",
+      "source_sha256": "c123892599331817e2927557959b0684fc41ffb4dffa981b56ffcfc3e4327e54"
+    }
+  ]
+}

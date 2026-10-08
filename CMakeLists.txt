@@ -86,6 +86,16 @@ if(BUILD_TESTING)
     add_executable(rar_chen_continuation_test tests/chen_continuation.cpp)
     target_include_directories(rar_chen_continuation_test PRIVATE include)
     add_test(NAME rar_chen_continuation_test COMMAND rar_chen_continuation_test)
+    add_executable(rar_custom_remesh_test tests/custom_remesh.cpp)
+    target_include_directories(rar_custom_remesh_test PRIVATE include)
+    target_link_libraries(rar_custom_remesh_test PRIVATE CGAL::CGAL Eigen3::Eigen)
+    add_test(NAME rar_custom_remesh_test COMMAND rar_custom_remesh_test)
+    add_test(NAME rar_remesh_backend_cli_test
+        COMMAND ${CMAKE_COMMAND}
+            "-DEXE=$<TARGET_FILE:rar_cgal>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/custom-remesh-cli"
+            "-DWITH_IPOPT=$<AND:$<BOOL:${RAR_ENABLE_IPOPT}>,$<BOOL:${IPOPT_INCLUDE_DIR}>,$<BOOL:${IPOPT_LIBRARY}>>"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/remesh_backend_cli.cmake")
 endif()
 
 
