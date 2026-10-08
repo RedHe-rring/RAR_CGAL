@@ -40,6 +40,10 @@ struct CGALAdaptiveChenStats {
     double chen_max_gradient_before = 0.0;
     double chen_max_gradient_after = 0.0;
     std::size_t chen_changed_vertex_count = 0;
+    bool chen_used_fallback = false;
+    double chen_completed_fraction = 1.0;
+    double chen_failed_fraction = 0.0;
+    int chen_failed_status = 0;
 };
 
 inline void validate_cgal_adaptive_config(
@@ -342,6 +346,10 @@ run_cgal_adaptive_chen_from_maps(
         chen_stats.max_gradient_after;
     stats.chen_changed_vertex_count =
         chen_stats.changed_vertex_count;
+    stats.chen_used_fallback = chen_stats.used_fallback;
+    stats.chen_completed_fraction = chen_stats.completed_fraction;
+    stats.chen_failed_fraction = chen_stats.failed_fraction;
+    stats.chen_failed_status = chen_stats.failed_status;
 
     double corrected_sum = 0.0;
     stats.corrected_sizing_min =

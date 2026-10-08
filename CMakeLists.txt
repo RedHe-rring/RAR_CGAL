@@ -83,6 +83,9 @@ if(BUILD_TESTING)
     target_include_directories(rar_smoke_test PRIVATE include)
     target_link_libraries(rar_smoke_test PRIVATE CGAL::CGAL Eigen3::Eigen)
     add_test(NAME rar_smoke_test COMMAND rar_smoke_test)
+    add_executable(rar_chen_continuation_test tests/chen_continuation.cpp)
+    target_include_directories(rar_chen_continuation_test PRIVATE include)
+    add_test(NAME rar_chen_continuation_test COMMAND rar_chen_continuation_test)
 endif()
 
 

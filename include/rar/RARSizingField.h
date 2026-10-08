@@ -41,6 +41,10 @@ struct RARFieldStats {
     double chen_max_gradient_before = 0.0;
     double chen_max_gradient_after = 0.0;
     std::size_t chen_changed_vertex_count = 0;
+    bool chen_used_fallback = false;
+    double chen_completed_fraction = 1.0;
+    double chen_failed_fraction = 0.0;
+    int chen_failed_status = 0;
 
     std::size_t vertex_count = 0;
 };
@@ -132,6 +136,10 @@ public:
                 chen_stats.max_gradient_after;
             stats_.chen_changed_vertex_count =
                 chen_stats.changed_vertex_count;
+            stats_.chen_used_fallback = chen_stats.used_fallback;
+            stats_.chen_completed_fraction = chen_stats.completed_fraction;
+            stats_.chen_failed_fraction = chen_stats.failed_fraction;
+            stats_.chen_failed_status = chen_stats.failed_status;
 
             update_corrected_sizing_stats(mesh);
         }

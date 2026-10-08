@@ -1,4 +1,5 @@
 #include "rar/ChenSizingCorrection.h"
+#include "rar/detail/ChenContinuation.h"
 
 #include <CGAL/Kernel/global_functions_3.h>
 #include <CGAL/boost/graph/iterator.h>
@@ -8,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -430,10 +432,11 @@ double max_gradient(
     double max_sq = 0.0;
 
     for (const auto& c : constraints) {
-        max_sq =
-            (std::max)(
-                max_sq,
-                constraint_value(c, h.data()));
+        const double value = constraint_value(c, h.data());
+        if (!std::isfinite(value)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        max_sq = (std::max)(max_sq, value);
     }
 
     return std::sqrt((std::max)(0.0, max_sq));
@@ -491,6 +494,9 @@ ChenCorrectionStats apply_chen_sizing_correction(
         max_gradient(constraints, h0);
 
     const double gradient_limit = std::log(beta);
+    if (!std::isfinite(stats.max_gradient_before)) {
+        throw std::runtime_error("Chen field gradient is not finite");
+    }
 
     // The objective decreases as any h_i increases. Therefore, if h0 already
     // satisfies every Chen constraint, it is the componentwise largest
@@ -537,9 +543,8 @@ ChenCorrectionStats apply_chen_sizing_correction(
     }
 
     constexpr double kContinuationGrowth = 10.0;
-    double stage_fraction =
+    const double stage_fraction =
         (std::min)(1.0, seed_fraction * kContinuationGrowth);
-    problem->set_stage(stage_fraction, continuation_start);
 
     Ipopt::SmartPtr<Ipopt::IpoptApplication> app =
         IpoptApplicationFactory();
@@ -572,12 +577,6 @@ ChenCorrectionStats apply_chen_sizing_correction(
             "Failed to initialize IPOPT for Chen correction");
     }
 
-    std::cout
-        << "Chen continuation upper-bound fraction: "
-        << stage_fraction << '\n';
-    Ipopt::ApplicationReturnStatus solve_status =
-        app->OptimizeTNLP(problem);
-
     const auto is_accepted_status =
         [](const Ipopt::ApplicationReturnStatus status) {
             return status == Ipopt::Solve_Succeeded ||
@@ -585,48 +584,62 @@ ChenCorrectionStats apply_chen_sizing_correction(
                 status == Ipopt::Feasible_Point_Found;
         };
 
-    if (!is_accepted_status(solve_status)) {
-        throw std::runtime_error(
-            "IPOPT failed in a Chen continuation stage (status " +
-            std::to_string(static_cast<int>(solve_status)) + ")");
-    }
+    const auto validate_solution =
+        [&](std::vector<double>& values, const double fraction) {
+            if (values.size() != h0.size()) {
+                throw std::runtime_error(
+                    "IPOPT returned a Chen solution with an unexpected size");
+            }
+            for (std::size_t i = 0; i < values.size(); ++i) {
+                const double upper = (std::min)(
+                    h0[i], hmin + fraction * (h0[i] - hmin));
+                const double tolerance =
+                    1e-12 * (std::max)(1.0, std::abs(h0[i]));
+                if (!std::isfinite(values[i]) ||
+                    values[i] < hmin - tolerance ||
+                    values[i] > upper + tolerance) {
+                    throw std::runtime_error(
+                        "Chen solution contains a non-finite or out-of-bounds value");
+                }
+                values[i] = (std::max)(hmin, (std::min)(upper, values[i]));
+            }
+            // Check the field AFTER clamping: even tiny bound adjustments can
+            // change gradients on thin triangles. Match IPOPT's acceptable
+            // absolute tolerance on the squared-gradient constraint.
+            const double gradient = max_gradient(constraints, values);
+            if (!std::isfinite(gradient) ||
+                gradient * gradient > gradient_limit * gradient_limit + 1e-6) {
+                throw std::runtime_error(
+                    "Chen solution violates the gradient bound after validation");
+            }
+        };
 
-    while (stage_fraction < 1.0) {
-        const double next_stage_fraction =
-            (std::min)(
-                1.0,
-                stage_fraction * kContinuationGrowth);
-        problem->set_stage(
-            next_stage_fraction,
-            problem->solution());
+    const detail::ChenContinuationResult continuation =
+        detail::run_chen_continuation(
+            stage_fraction, kContinuationGrowth, continuation_start,
+            [&](const double fraction, const std::vector<double>& start,
+                const bool first) {
+                problem->set_stage(fraction, start);
+                std::cout
+                    << "Chen continuation upper-bound fraction: "
+                    << fraction << '\n';
+                const auto status = first
+                    ? app->OptimizeTNLP(problem)
+                    : app->ReOptimizeTNLP(problem);
+                return detail::ChenStageResult{
+                    is_accepted_status(status), static_cast<int>(status),
+                    problem->solution()};
+            },
+            validate_solution);
 
-        std::cout
-            << "Chen continuation upper-bound fraction: "
-            << next_stage_fraction << '\n';
-        solve_status = app->ReOptimizeTNLP(problem);
-
-        if (!is_accepted_status(solve_status)) {
-            throw std::runtime_error(
-                "IPOPT failed in a Chen continuation stage (status " +
-                std::to_string(static_cast<int>(solve_status)) + ")");
-        }
-
-        stage_fraction = next_stage_fraction;
-    }
-
-    const std::vector<double>& solution =
-        problem->solution();
-
-    if (solution.size() != dense_vertices.size()) {
-        throw std::runtime_error(
-            "IPOPT returned a Chen solution with an unexpected size");
-    }
+    stats.used_fallback = continuation.used_fallback;
+    stats.completed_fraction = continuation.completed_fraction;
+    stats.failed_fraction = continuation.failed_fraction;
+    stats.failed_status = continuation.failed_status;
+    const std::vector<double>& solution = continuation.solution;
 
     for (std::size_t i = 0; i < solution.size(); ++i) {
-        const double value =
-            (std::max)(
-                hmin,
-                (std::min)(h0[i], solution[i]));
+        const double value = solution[i];
 
         sizing_map[dense_vertices[i]] = value;
 
@@ -640,13 +653,19 @@ ChenCorrectionStats apply_chen_sizing_correction(
             vertex_areas[i] / (value * value);
     }
 
-    std::vector<double> corrected(solution.size(), 0.0);
-    for (std::size_t i = 0; i < dense_vertices.size(); ++i) {
-        corrected[i] = sizing_map[dense_vertices[i]];
-    }
-
     stats.max_gradient_after =
-        max_gradient(constraints, corrected);
+        max_gradient(constraints, solution);
+
+    if (stats.used_fallback) {
+        std::cerr
+            << "Warning: Chen stage f=" << stats.failed_fraction
+            << " failed (IPOPT status " << stats.failed_status
+            << "). Using validated solution from f=" << stats.completed_fraction
+            << "; full continuation to f=1 was not completed.\n"
+            << "  fallback max |grad h| = " << stats.max_gradient_after
+            << ", element objective = " << stats.objective
+            << ". The fallback field may produce a much denser mesh.\n";
+    }
 
     return stats;
 }

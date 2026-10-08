@@ -549,6 +549,19 @@ objective. IPOPT variable-bound relaxation is disabled so clamping the returned
 field to `[min_edge, h0]` does not introduce gradient violations on very small
 triangles.
 
+If a later continuation stage fails, the last successful, independently
+validated stage is used as a fallback. Its field is still feasible for the
+original bounds, but does not complete the optimization at `f=1` and may cause
+substantially denser remeshing. Before field export/remeshing, a warning reports
+the failed IPOPT status, failed fraction, retained fraction, gradient and
+element-count objective. The final summary also identifies the fallback.
+If the first stage fails, there is no successful checkpoint and the run still
+reports an error. Non-finite values, material bound violations, or a failed
+gradient check also cause an error before the corrected field is written.
+Validation allows bound roundoff of `1e-12 * max(1, abs(h0_i))`, clamps it to the
+stage bounds, and then checks `||grad h||^2 <= log(beta)^2 + 1e-6`, matching
+IPOPT's configured acceptable constraint tolerance.
+
 Thus the experiment changes only the initial sizing field; split/collapse/relax
 still use the same `PMP::isotropic_remeshing()` backend as `--field rar`.
 

@@ -283,6 +283,21 @@ void print_mesh_stats(
         << '\n';
 }
 
+template <typename Stats>
+void print_chen_continuation_stats(const Stats& s)
+{
+    std::cout
+        << "  continuation result     = "
+        << (s.chen_used_fallback ? "fallback" : "complete") << '\n'
+        << "  completed fraction      = "
+        << s.chen_completed_fraction << '\n';
+    if (s.chen_used_fallback) {
+        std::cout
+            << "  failed fraction         = " << s.chen_failed_fraction << '\n'
+            << "  failed IPOPT status     = " << s.chen_failed_status << '\n';
+    }
+}
+
 void print_rar_field_stats(
     const rar::RARFieldStats& s)
 {
@@ -314,6 +329,7 @@ void print_rar_field_stats(
             << s.vertex_count << '\n'
             << "  estimated element objective = "
             << s.chen_objective << '\n';
+        print_chen_continuation_stats(s);
     }
 }
 
@@ -341,6 +357,7 @@ void print_cgal_adaptive_chen_stats(
         << s.vertex_count << '\n'
         << "  estimated element objective = "
         << s.chen_objective << '\n';
+    print_chen_continuation_stats(s);
 }
 
 void print_csf_field_stats(
