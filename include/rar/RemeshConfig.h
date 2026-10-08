@@ -6,6 +6,7 @@ namespace rar {
 
 enum class FieldType {
     CGALAdaptive,
+    CGALAdaptiveRadius,
     CGALAdaptiveChen,
     CGALAdaptiveRadiusChen,
     RAR,
@@ -19,6 +20,8 @@ inline const char* field_type_name(
     switch (type) {
     case FieldType::CGALAdaptive:
         return "cgal-adaptive";
+    case FieldType::CGALAdaptiveRadius:
+        return "cgal-adaptive-radius";
     case FieldType::CGALAdaptiveChen:
         return "cgal-adaptive-chen";
     case FieldType::CGALAdaptiveRadiusChen:

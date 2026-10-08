@@ -31,7 +31,7 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
         << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
@@ -47,6 +47,7 @@ void print_usage(const char* exe) {
         << "  --no-project            Disable projection to the input surface\n\n"
         << "Field notes:\n"
         << "  cgal-adaptive       CGAL 6.1.x Adaptive_sizing_field.\n"
+        << "  cgal-adaptive-radius  Curvature-radius-guarded CGAL-style field, without Chen correction.\n"
         << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
         << "  cgal-adaptive-radius-chen  Curvature-radius-guarded CGAL field followed by Chen correction.\n"
         << "  rar                 RAR cotangent-curvature sizing field with CGAL local operators.\n"
@@ -60,6 +61,11 @@ rar::FieldType parse_field_type(
     if (value == "cgal-adaptive" ||
         value == "cgal") {
         return rar::FieldType::CGALAdaptive;
+    }
+
+    if (value == "cgal-adaptive-radius" ||
+        value == "cgal-radius") {
+        return rar::FieldType::CGALAdaptiveRadius;
     }
 
     if (value == "cgal-adaptive-chen" ||
@@ -86,7 +92,7 @@ rar::FieldType parse_field_type(
 
     throw std::invalid_argument(
         "Unknown field '" + value +
-        "'. Expected cgal-adaptive, cgal-adaptive-chen, "
+        "'. Expected cgal-adaptive, cgal-adaptive-radius, cgal-adaptive-chen, "
         "cgal-adaptive-radius-chen, rar, rar-chen, or csf.");
 }
 
@@ -539,6 +545,10 @@ int main(
         if (cfg.field_type ==
             rar::FieldType::CGALAdaptive) {
             rar::run_cgal_adaptive_remeshing(
+                mesh, cfg);
+        } else if (cfg.field_type ==
+                   rar::FieldType::CGALAdaptiveRadius) {
+            rar::run_cgal_adaptive_radius_remeshing(
                 mesh, cfg);
         } else if (cfg.field_type ==
                    rar::FieldType::CGALAdaptiveChen) {

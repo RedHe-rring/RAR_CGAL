@@ -179,6 +179,108 @@ inline void run_cgal_adaptive_remeshing(
     );
 }
 
+using CGALPrincipalCurvatures =
+    PMP::Principal_curvatures_and_directions<Kernel>;
+
+struct CGALAdaptiveRadiusField {
+    Mesh::Property_map<Mesh::Vertex_index, CGALPrincipalCurvatures>
+        curvature_map;
+    Mesh::Property_map<Mesh::Vertex_index, double> target_map;
+};
+
+inline double cgal_adaptive_radius_curvature(
+    const CGALPrincipalCurvatures& pc)
+{
+    return (std::max)(
+        std::abs(CGAL::to_double(pc.min_curvature)),
+        std::abs(CGAL::to_double(pc.max_curvature)));
+}
+
+inline CGALAdaptiveRadiusField make_cgal_adaptive_radius_field(
+    Mesh& mesh,
+    const RemeshConfig& cfg)
+{
+    const auto curvature_property =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            CGALPrincipalCurvatures>(
+                "v:cgal_principal_curvatures",
+                CGALPrincipalCurvatures{});
+    const auto curvature_map = curvature_property.first;
+
+    if (curvature_property.second) {
+        PMP::interpolated_corrected_curvatures(
+            mesh,
+            CGAL::parameters::
+                vertex_principal_curvatures_and_directions_map(
+                    curvature_map));
+    }
+
+    auto target_map =
+        mesh.add_property_map<
+            Mesh::Vertex_index,
+            double>(
+                "v:cgal_adaptive_radius_raw_target_length",
+                cfg.max_edge_length).first;
+
+    for (const Mesh::Vertex_index v : vertices(mesh)) {
+        target_map[v] = cgal_adaptive_radius_target_length(
+            cgal_adaptive_radius_curvature(curvature_map[v]),
+            cfg.epsilon,
+            cfg.min_edge_length,
+            cfg.max_edge_length);
+    }
+
+    return {curvature_map, target_map};
+}
+
+inline void run_cgal_adaptive_radius_remeshing(
+    Mesh& mesh,
+    const RemeshConfig& cfg)
+{
+    validate_cgal_adaptive_config(cfg);
+
+    const CGALAdaptiveRadiusField field =
+        make_cgal_adaptive_radius_field(mesh, cfg);
+
+    if (cfg.export_field && !cfg.export_field_prefix.empty()) {
+        write_field_diagnostics(
+            mesh,
+            cfg.export_field_prefix,
+            [&](const Mesh::Vertex_index v) {
+                return cgal_adaptive_radius_curvature(
+                    field.curvature_map[v]);
+            },
+            [&](const Mesh::Vertex_index v) {
+                return field.target_map[v];
+            });
+    }
+
+    PropertyMapSizingField sizing_field(
+        field.target_map,
+        cfg.max_edge_length);
+
+    const FeatureConstraints feature_constraints =
+        make_feature_constraints(
+            mesh,
+            cfg.preserve_features,
+            cfg.feature_angle_degrees);
+
+    PMP::isotropic_remeshing(
+        faces(mesh),
+        sizing_field,
+        mesh,
+        CGAL::parameters::
+            number_of_iterations(cfg.iterations)
+            .number_of_relaxation_steps(cfg.relaxation_steps)
+            .edge_is_constrained_map(feature_constraints.edge_map)
+            .vertex_is_constrained_map(feature_constraints.vertex_map)
+            .collapse_constraints(false)
+            .relax_constraints(true)
+            .do_project(cfg.do_project)
+    );
+}
+
 template <typename ScalarMap, typename ExportFn>
 inline CGALAdaptiveChenStats
 run_cgal_adaptive_chen_from_maps(
@@ -377,32 +479,8 @@ run_cgal_adaptive_radius_chen_remeshing(
 {
     validate_cgal_adaptive_chen_config(cfg);
 
-    using PrincipalCurvatures =
-        PMP::Principal_curvatures_and_directions<Kernel>;
-
-    const auto curvature_property =
-        mesh.add_property_map<
-            Mesh::Vertex_index,
-            PrincipalCurvatures>(
-                "v:cgal_principal_curvatures",
-                PrincipalCurvatures{});
-    const auto curvature_map =
-        curvature_property.first;
-
-    if (curvature_property.second) {
-        PMP::interpolated_corrected_curvatures(
-            mesh,
-            CGAL::parameters::
-                vertex_principal_curvatures_and_directions_map(
-                    curvature_map));
-    }
-
-    auto raw_map =
-        mesh.add_property_map<
-            Mesh::Vertex_index,
-            double>(
-                "v:cgal_adaptive_radius_raw_target_length",
-                cfg.max_edge_length).first;
+    const CGALAdaptiveRadiusField field =
+        make_cgal_adaptive_radius_field(mesh, cfg);
 
     auto corrected_map =
         mesh.add_property_map<
@@ -411,25 +489,10 @@ run_cgal_adaptive_radius_chen_remeshing(
                 "v:cgal_adaptive_radius_chen_target_length",
                 cfg.max_edge_length).first;
 
-    for (const Mesh::Vertex_index v : vertices(mesh)) {
-        const PrincipalCurvatures& pc = curvature_map[v];
-        const double kappa_max =
-            (std::max)(
-                std::abs(CGAL::to_double(pc.min_curvature)),
-                std::abs(CGAL::to_double(pc.max_curvature)));
-
-        raw_map[v] =
-            cgal_adaptive_radius_target_length(
-                kappa_max,
-                cfg.epsilon,
-                cfg.min_edge_length,
-                cfg.max_edge_length);
-    }
-
     return run_cgal_adaptive_chen_from_maps(
         mesh,
         cfg,
-        raw_map,
+        field.target_map,
         corrected_map,
         [&](const auto raw_values,
             const auto corrected_values) {
@@ -442,13 +505,8 @@ run_cgal_adaptive_radius_chen_remeshing(
                 mesh,
                 cfg.export_field_prefix,
                 [&](const Mesh::Vertex_index v) {
-                    const PrincipalCurvatures& pc =
-                        curvature_map[v];
-                    return (std::max)(
-                        std::abs(CGAL::to_double(
-                            pc.min_curvature)),
-                        std::abs(CGAL::to_double(
-                            pc.max_curvature)));
+                    return cgal_adaptive_radius_curvature(
+                        field.curvature_map[v]);
                 },
                 [&](const Mesh::Vertex_index v) {
                     return raw_values[v];

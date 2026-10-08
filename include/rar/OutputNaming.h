@@ -55,6 +55,7 @@ inline std::string make_parameterized_stem(
 
     switch (cfg.field_type) {
     case FieldType::CGALAdaptive:
+    case FieldType::CGALAdaptiveRadius:
     case FieldType::RAR:
         name
             << "__eps-"

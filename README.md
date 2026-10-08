@@ -7,6 +7,7 @@ A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing 
 The executable keeps several adaptive sizing modes side by side:
 
 - `cgal-adaptive`: CGAL 6.1.x `Adaptive_sizing_field`.
+- `cgal-adaptive-radius`: curvature-radius-guarded CGAL-style field used directly by the remesher, without Chen correction.
 - `cgal-adaptive-chen`: the same CGAL adaptive field followed by the Chen gradient-constrained correction.
 - `cgal-adaptive-radius-chen`: a curvature-radius-guarded CGAL-style field followed by the same Chen correction.
 - `rar`: paper-oriented Dunyach et al. (2013) curvature/sizing field, passed to the same CGAL `isotropic_remeshing()` backend.
@@ -22,9 +23,10 @@ This separation is intentional. It allows direct experiments on the sizing field
 CGAL computes local principal curvatures with
 `interpolated_corrected_curvatures()`, converts them to a curvature-adaptive target length, and uses the result through the `PMPSizingField` interface.
 
-### CGAL-Adaptive radius guard + Chen
+### CGAL-Adaptive radius guard, with or without Chen
 
-The experimental `cgal-adaptive-radius-chen` mode uses
+The `cgal-adaptive-radius` and `cgal-adaptive-radius-chen` modes share the same
+initial sizing field:
 
 ```text
 kappa = max(abs(k_min), abs(k_max))
@@ -39,9 +41,11 @@ where the formula equals `r` is approximately `0.183503`. At the implemented
 threshold the formula is approximately `0.998765 r`, and immediately above it
 the field falls back to `r`. For smaller epsilon the formula can produce
 `h0 < r`; `r` is not a lower bound. For zero or non-finite curvature, `h0` is
-`max_edge`. The resulting `h0` is the per-vertex upper bound passed to the Chen
-gradient-constrained correction, so the corrected value cannot exceed this raw
-value.
+`max_edge`. The `cgal-adaptive-radius` mode uses `h0` directly for splitting,
+collapsing, and relaxation. It exports `curvature` and `target_length`.
+The `cgal-adaptive-radius-chen` mode passes `h0` as the per-vertex upper bound
+to the Chen gradient-constrained correction, so the corrected value cannot
+exceed this raw value.
 
 When `--epsilon` is omitted, epsilon is selected automatically for every
 epsilon-based field. The program computes
