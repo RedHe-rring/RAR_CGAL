@@ -1,4 +1,5 @@
 #include "rar/AutoEpsilon.h"
+#include "rar/RadiusAblation.h"
 #include "rar/CGALAdaptiveRemesher.h"
 #include "rar/CSFRemesher.h"
 #include "rar/MeshOutput.h"
@@ -31,7 +32,7 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-pmap | cgal-adaptive-radius-cap | cgal-adaptive-radius-recovery | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
         << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
@@ -43,6 +44,7 @@ void print_usage(const char* exe) {
         << "  --no-preserve-features  Disable sharp-feature detection and preservation\n"
         << "  --feature-angle <deg>   Sharp-feature angle threshold (default: 50)\n"
         << "  --export-field <prefix> Override field-output stem (.ply/.csv added)\n"
+        << "  --radius-diagnostics <csv> Export initial raw/radius mechanism diagnostics\n"
         << "  --no-export-field       Disable default field export\n"
         << "  --no-project            Disable projection to the input surface\n\n"
         << "Field notes:\n"
@@ -68,6 +70,10 @@ rar::FieldType parse_field_type(
         return rar::FieldType::CGALAdaptiveRadius;
     }
 
+    if (value == "cgal-adaptive-pmap") return rar::FieldType::CGALAdaptivePmap;
+    if (value == "cgal-adaptive-radius-cap") return rar::FieldType::CGALAdaptiveRadiusCap;
+    if (value == "cgal-adaptive-radius-recovery") return rar::FieldType::CGALAdaptiveRadiusRecovery;
+
     if (value == "cgal-adaptive-chen" ||
         value == "cgal-chen") {
         return rar::FieldType::CGALAdaptiveChen;
@@ -92,7 +98,8 @@ rar::FieldType parse_field_type(
 
     throw std::invalid_argument(
         "Unknown field '" + value +
-        "'. Expected cgal-adaptive, cgal-adaptive-radius, cgal-adaptive-chen, "
+        "'. Expected cgal-adaptive, cgal-adaptive-pmap, cgal-adaptive-radius-cap, "
+        "cgal-adaptive-radius-recovery, cgal-adaptive-radius, cgal-adaptive-chen, "
         "cgal-adaptive-radius-chen, rar, rar-chen, or csf.");
 }
 
@@ -190,6 +197,8 @@ rar::RemeshConfig parse_args(
         } else if (arg ==
                    "--no-export-field") {
             cfg.export_field = false;
+        } else if (arg == "--radius-diagnostics") {
+            cfg.radius_diagnostics_path = require_value(arg);
         } else if (arg == "--no-project") {
             cfg.do_project = false;
         } else if (arg == "--help" ||
@@ -556,6 +565,12 @@ int main(
                 << ".csv\n";
         }
 
+        if (!cfg.radius_diagnostics_path.empty()) {
+            // A separate copy keeps diagnostic properties out of all legacy paths.
+            rar::Mesh initial_mesh = mesh;
+            rar::write_radius_ablation_diagnostics(initial_mesh, cfg);
+        }
+
         const auto begin =
             std::chrono::steady_clock::now();
 
@@ -567,6 +582,10 @@ int main(
                    rar::FieldType::CGALAdaptiveRadius) {
             rar::run_cgal_adaptive_radius_remeshing(
                 mesh, cfg);
+        } else if (cfg.field_type == rar::FieldType::CGALAdaptivePmap ||
+                   cfg.field_type == rar::FieldType::CGALAdaptiveRadiusCap ||
+                   cfg.field_type == rar::FieldType::CGALAdaptiveRadiusRecovery) {
+            rar::run_radius_ablation_remeshing(mesh, cfg);
         } else if (cfg.field_type ==
                    rar::FieldType::CGALAdaptiveChen) {
             const rar::CGALAdaptiveChenStats field_stats =

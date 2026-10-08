@@ -7,6 +7,9 @@ namespace rar {
 enum class FieldType {
     CGALAdaptive,
     CGALAdaptiveRadius,
+    CGALAdaptivePmap,
+    CGALAdaptiveRadiusCap,
+    CGALAdaptiveRadiusRecovery,
     CGALAdaptiveChen,
     CGALAdaptiveRadiusChen,
     RAR,
@@ -22,6 +25,12 @@ inline const char* field_type_name(
         return "cgal-adaptive";
     case FieldType::CGALAdaptiveRadius:
         return "cgal-adaptive-radius";
+    case FieldType::CGALAdaptivePmap:
+        return "cgal-adaptive-pmap";
+    case FieldType::CGALAdaptiveRadiusCap:
+        return "cgal-adaptive-radius-cap";
+    case FieldType::CGALAdaptiveRadiusRecovery:
+        return "cgal-adaptive-radius-recovery";
     case FieldType::CGALAdaptiveChen:
         return "cgal-adaptive-chen";
     case FieldType::CGALAdaptiveRadiusChen:
@@ -40,6 +49,7 @@ struct RemeshConfig {
     std::string input_path;
     std::string output_path;
     std::string export_field_prefix;
+    std::string radius_diagnostics_path;
     bool output_path_auto = false;
     bool export_field = true;
 
