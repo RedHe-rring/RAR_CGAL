@@ -24,6 +24,36 @@ int main() {
         mesh.add_face(v1, v2, v3) == Mesh::null_face() ||
         mesh.add_face(v2, v0, v3) == Mesh::null_face())
         throw std::runtime_error("Could not construct tetrahedron");
+    // This reproduces the CGAL Euler delta semantics independently from
+    // angle-policy acceptance. One split creates +1 vertex / +2 triangles.
+    {
+        Mesh probe(mesh);
+        const auto h = halfedge(*edges(probe).first, probe);
+        const auto f0 = face(h, probe);
+        const auto f1 = face(opposite(h, probe), probe);
+        const auto oldV = num_vertices(probe), oldF = num_faces(probe);
+        const Point midpoint = CGAL::midpoint(
+            probe.point(source(h, probe)), probe.point(target(h, probe)));
+        const auto new_h = CGAL::Euler::split_edge(h, probe);
+        const auto vm = target(new_h, probe);
+        probe.point(vm) = midpoint;
+        if (!split_quad(probe, f0, vm) || !split_quad(probe, f1, vm))
+            throw std::runtime_error("Quad retriangulation failed");
+        verify_delta(probe, oldV, oldF, +1, +2, "smoke split");
+
+        bool collapsed = false;
+        for (const auto e : edges(probe)) {
+            if (is_border(e, probe) ||
+                !CGAL::Euler::does_satisfy_link_condition(e, probe))
+                continue;
+            const auto vc = num_vertices(probe), fc = num_faces(probe);
+            CGAL::Euler::collapse_edge(e, probe);
+            verify_delta(probe, vc, fc, -1, -2, "smoke collapse");
+            collapsed = true;
+            break;
+        }
+        if (!collapsed) throw std::runtime_error("No legal test collapse");
+    }
     Options o;
     o.rounds = 3;
     o.smoothing_steps = 1;
@@ -32,6 +62,9 @@ int main() {
     o.verbose = false;
     const Statistics stats = run(mesh, o);
     if (!mesh.is_valid() || !CGAL::is_triangle_mesh(mesh) ||
+        stats.vertices_before != stats.vertices_after ||
+        stats.faces_before != stats.faces_after ||
+        stats.insertions != stats.collapses ||
         stats.vertices_after == 0 || stats.faces_after == 0)
         throw std::runtime_error("Output mesh invalid or empty");
     std::cout << "Wang2019 smoke PASS: " << stats.vertices_after
