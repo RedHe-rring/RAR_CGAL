@@ -160,6 +160,30 @@ int main() {
             grid.number_of_vertices()!=n0+1 ||
             grid.number_of_faces()!=f0+2)
             throw std::runtime_error("Angle-driven planar insertion corrupted topology");
+        // Exercise the complete staged pipeline on a small open surface.
+        // In non-strict mode, verify that reported insert/collapse counts
+        // agree with the actual live element delta.
+        Options full;
+        full.min_angle=30.0;
+        full.max_angle=90.0;
+        full.rounds=3;
+        full.k=2;
+        full.smoothing_steps=1;
+        full.project=false;
+        full.protect_features=false;
+        full.strict_vertex_count=false;
+        full.verbose=false;
+        const Statistics actual=run(grid,full);
+        const auto delta_v=static_cast<std::ptrdiff_t>(actual.vertices_after)-
+                           static_cast<std::ptrdiff_t>(actual.vertices_before);
+        if (delta_v!=static_cast<std::ptrdiff_t>(actual.insertions)-
+                     static_cast<std::ptrdiff_t>(actual.collapses) ||
+            !grid.is_valid() || !CGAL::is_triangle_mesh(grid))
+            throw std::runtime_error("Staged pipeline violated live vertex accounting");
+        std::cout << "Grid pipeline PASS, inserts=" << actual.insertions
+                  << ", collapses=" << actual.collapses
+                  << ", flips=" << actual.flips << '\n';
+
     }
     Options o;
     o.rounds = 3;
