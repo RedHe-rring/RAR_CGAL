@@ -3,7 +3,13 @@
 // post-processing backend. This is an implementation study, not author code.
 #include "rar/Types.h"
 #include <CGAL/AABB_face_graph_triangle_primitive.h>
-#include <CGAL/AABB_traits_3.h>
+#if __has_include(<CGAL/AABB_traits_3.h>)
+#  include <CGAL/AABB_traits_3.h>
+#  define RAR_WANG2019_CGAL_AABB_3 1
+#else
+#  include <CGAL/AABB_traits.h>
+#  define RAR_WANG2019_CGAL_AABB_3 0
+#endif
 #include <CGAL/AABB_tree.h>
 #include <CGAL/boost/graph/Euler_operations.h>
 #include <CGAL/boost/graph/iterator.h>
@@ -31,7 +37,11 @@ using Face = Mesh::Face_index;
 using Halfedge = Mesh::Halfedge_index;
 using Vector = Kernel::Vector_3;
 using Primitive = CGAL::AABB_face_graph_triangle_primitive<Mesh>;
+#if RAR_WANG2019_CGAL_AABB_3
 using Traits = CGAL::AABB_traits_3<Kernel, Primitive>;
+#else
+using Traits = CGAL::AABB_traits<Kernel, Primitive>;
+#endif
 using Tree = CGAL::AABB_tree<Traits>;
 
 struct Options {
