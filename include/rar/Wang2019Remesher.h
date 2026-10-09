@@ -99,7 +99,10 @@ inline void verify_delta(const Mesh& m,
     if (static_cast<std::ptrdiff_t>(num_vertices(m)) != expected_v ||
         static_cast<std::ptrdiff_t>(num_faces(m)) != expected_f) {
         throw std::runtime_error(std::string("Wang2019 ") + operation +
-                                 " produced an invalid mesh or unexpected delta V/F");
+            " V=" + std::to_string(num_vertices(m)) +
+            " expected=" + std::to_string(expected_v) +
+            " F=" + std::to_string(num_faces(m)) +
+            " expected=" + std::to_string(expected_f));
     }
 }
 
