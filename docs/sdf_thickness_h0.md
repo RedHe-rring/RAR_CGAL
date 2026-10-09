@@ -22,7 +22,7 @@ sweeps, quality comparisons, or experiment results are included.
 For each initial vertex, with `kappa = max(abs(k1), abs(k2))`:
 
 ```
-epsilon_local = min(epsilon, 0.183 / kappa, thickness / 2)
+epsilon_local = min(epsilon, 0.183 / kappa, thickness / 4)
 h_formula    = sqrt(6 * epsilon_local / kappa - 3 * epsilon_local^2)
 h0           = clamp(h_formula, min_edge, max_edge)
 ```
@@ -48,7 +48,8 @@ epsilon, `h_formula = sqrt(6*0.183 - 3*0.183^2)/kappa`, approximately
 threshold. Thus disabling the thickness effect does not make these two modes
 identical. The old Radius implementation is retained for comparison.
 
-`thickness/2` caps geometric tolerance, not edge length. In particular, a flat
+The thickness ratio is fixed at `1/4` and recorded in the SDF metadata.
+`thickness/4` caps geometric tolerance, not edge length. In particular, a flat
 thin region can still have `h0 = max_edge`. This formula and the remesher do not
 provide a certified approximation-error, wall-preservation, or no-intersection
 guarantee. Applying `min_edge` can also raise the target above the formula.

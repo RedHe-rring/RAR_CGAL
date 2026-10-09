@@ -52,9 +52,9 @@ void formula_tests()
     require(radius.radius_limited && close(radius.epsilon_local, .0915), "radius cap");
     require(close(radius.target_length, std::sqrt(6*.0915/2 - 3*.0915*.0915)), "radius formula");
     const auto thin = sdf_thickness_target_length(2.0, .02, .5, .001, 10.0);
-    require(thin.thickness_limited && close(thin.epsilon_local, .01), "thickness cap");
+    require(thin.thickness_limited && close(thin.epsilon_local, .005), "thickness cap");
     require(thin.target_length < radius.target_length, "thickness must reduce target in safe formula range");
-    const auto tie = sdf_thickness_target_length(2.0, .02, .01, .001, 10.0);
+    const auto tie = sdf_thickness_target_length(2.0, .02, .005, .001, 10.0);
     require(tie.epsilon_limited && tie.thickness_limited, "limiter ties");
     require(sdf_thickness_target_length(2,.02,.5,.3,10).min_edge_clipped, "lower clipping");
     require(close(sdf_thickness_target_length(2,.02,.5,.3,10).target_length,.3), "lower bound");
@@ -104,7 +104,7 @@ void field_tests()
         require(close(field.thickness[v], sum/area), "face to vertex area transfer");
         require(close(field.vertex_area[v], area/3), "vertex area weights");
         require(field.samples[v].epsilon_local * field.curvature[v] <= .183 + 1e-14, "radius epsilon cap");
-        require(field.samples[v].epsilon_local <= field.thickness[v]/2, "thickness epsilon cap");
+        require(field.samples[v].epsilon_local <= field.thickness[v]/4, "thickness epsilon cap");
         require(std::isfinite(field.target[v]) && field.target[v]>0, "invalid h0");
     }
     rar::Mesh scaled(mesh);

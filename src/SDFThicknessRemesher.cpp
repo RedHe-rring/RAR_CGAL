@@ -57,6 +57,7 @@ void write_sdf_thickness_field(const Mesh& mesh, const RemeshConfig& cfg,
         << "  \"sdf_rays\": " << cfg.sdf_rays << ",\n"
         << "  \"sdf_cone_angle_degrees\": " << cfg.sdf_cone_angle_degrees << ",\n"
         << "  \"radius_epsilon_ratio\": 0.183,\n"
+        << "  \"thickness_epsilon_ratio\": " << kSDFThicknessEpsilonRatio << ",\n"
         << "  \"epsilon\": " << cfg.epsilon << ",\n"
         << "  \"min_edge_length\": " << cfg.min_edge_length << ",\n"
         << "  \"max_edge_length\": " << cfg.max_edge_length << ",\n"

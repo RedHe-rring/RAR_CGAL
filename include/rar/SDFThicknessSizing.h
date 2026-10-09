@@ -7,6 +7,8 @@
 
 namespace rar {
 
+inline constexpr double kSDFThicknessEpsilonRatio = 0.25;
+
 struct SDFThicknessSizingSample {
     double epsilon_local = 0.0;
     double target_length = 0.0;
@@ -34,7 +36,7 @@ inline SDFThicknessSizingSample sdf_thickness_target_length(
 
     const double radius_epsilon = kappa == 0.0
         ? std::numeric_limits<double>::infinity() : 0.183 / kappa;
-    const double thickness_epsilon = thickness / 2.0;
+    const double thickness_epsilon = thickness * kSDFThicknessEpsilonRatio;
     SDFThicknessSizingSample result;
     result.epsilon_local = (std::min)({epsilon, radius_epsilon, thickness_epsilon});
     if (!(result.epsilon_local > 0.0))
