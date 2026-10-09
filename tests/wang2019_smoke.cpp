@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <sstream>
 
 int main() {
     using namespace rar;
@@ -76,8 +77,13 @@ int main() {
                 break;
             }
         }
-        if (!success)
-            throw std::runtime_error("No successful angle-driven tetra insertion");
+        if (!success) {
+            std::ostringstream details;
+            details << "No successful angle-driven tetra insertion; reasons:";
+            for (std::size_t i=0; i<reasons.rejected.size(); ++i)
+                details << " " << cause_name(i) << "=" << reasons.rejected[i];
+            throw std::runtime_error(details.str());
+        }
         if (probe.number_of_vertices() != before_v + 1 ||
             !probe.is_valid() || !CGAL::is_triangle_mesh(probe))
             throw std::runtime_error("Angle-driven insert damaged the mesh");
