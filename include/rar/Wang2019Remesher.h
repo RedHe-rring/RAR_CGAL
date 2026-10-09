@@ -274,14 +274,13 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
         !acceptable_triangle(p,a,d,n1))
         return reject(RejectCause::geometry);
 
-    // The complete Fig. 4 operation also flips a neighboring edge. We first
-    // require the split itself to improve the local maximal angle.
-    const double before=(std::max)(triangle_angles(a,b,c).max,
-                                     triangle_angles(b,a,d).max);
-    const double after=(std::max)({triangle_angles(a,p,c).max,
-                                    triangle_angles(p,b,c).max,
-                                    triangle_angles(b,p,d).max,
-                                    triangle_angles(p,a,d).max});
+    // Evaluate the *processed large-angle triangle*, rather than requiring
+    // the worst angle over BOTH adjacent triangles to improve immediately.
+    // The shared-edge split can initially worsen its neighbor; the following
+    // angle-ranked flip and later passes handle those secondary angles.
+    const double before=triangle_angles(a,b,c).max;
+    const double after=(std::max)(triangle_angles(a,p,c).max,
+                                   triangle_angles(p,b,c).max);
     if (!(after < before - 1e-7)) return reject(RejectCause::no_improvement);
 
     const auto oldV=m.number_of_vertices(), oldF=m.number_of_faces();
