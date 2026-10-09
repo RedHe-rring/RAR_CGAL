@@ -31,7 +31,7 @@ int main() {
         const auto h = halfedge(*edges(probe).first, probe);
         const auto f0 = face(h, probe);
         const auto f1 = face(opposite(h, probe), probe);
-        const auto oldV = num_vertices(probe), oldF = num_faces(probe);
+        const auto oldV = probe.number_of_vertices(), oldF = probe.number_of_faces();
         const Point midpoint = CGAL::midpoint(
             probe.point(source(h, probe)), probe.point(target(h, probe)));
         const auto new_h = CGAL::Euler::split_edge(h, probe);
@@ -46,7 +46,7 @@ int main() {
             if (is_border(e, probe) ||
                 !CGAL::Euler::does_satisfy_link_condition(e, probe))
                 continue;
-            const auto vc = num_vertices(probe), fc = num_faces(probe);
+            const auto vc = probe.number_of_vertices(), fc = probe.number_of_faces();
             CGAL::Euler::collapse_edge(e, probe);
             verify_delta(probe, vc, fc, -1, -2, "smoke collapse");
             collapsed = true;
