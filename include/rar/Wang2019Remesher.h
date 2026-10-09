@@ -239,6 +239,13 @@ inline bool split_quad(Mesh& m, Face f, Vertex vm) {
     return false;
 }
 
+inline double large_angle_violation(const Point& a, const Point& b,
+                                    const Point& c, double upper_bound) {
+    const double error=(std::max)(0.0,
+                                  triangle_angles(a,b,c).max-upper_bound);
+    return error*error;
+}
+
 inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
                                   const Options& opt, const std::set<Vertex>&,
                                   RejectionStats* reasons = nullptr,
@@ -247,73 +254,118 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
         if (reasons) reasons->record(cause);
         return false;
     };
-    if (m.is_removed(f) || angles_of(m, f).max <= opt.max_angle)
+    if (m.is_removed(f) || angles_of(m,f).max<=opt.max_angle)
         return reject(RejectCause::stale);
 
-    Halfedge chosen = halfedge(f, m);
-    double max_len2 = -1.0;
-    for (const Halfedge h : CGAL::halfedges_around_face(halfedge(f, m), m)) {
-        const double d2 = norm2(m.point(source(h, m)) - m.point(target(h, m)));
-        if (d2 > max_len2) { max_len2 = d2; chosen = h; }
+    Halfedge chosen=halfedge(f,m);
+    double longest=-1.0;
+    for (const Halfedge h : CGAL::halfedges_around_face(halfedge(f,m),m)) {
+        const double len2=norm2(m.point(source(h,m))-m.point(target(h,m)));
+        if (len2>longest) { longest=len2; chosen=h; }
     }
-    const Halfedge ho = opposite(chosen, m);
-    if (is_border(chosen, m) || is_border(ho, m))
+    const Halfedge ho=opposite(chosen,m);
+    if (is_border(chosen,m) || is_border(ho,m))
         return reject(RejectCause::boundary);
-    if (is_feature_edge(m, edge(chosen, m), opt))
+    if (is_feature_edge(m,edge(chosen,m),opt))
         return reject(RejectCause::feature);
-
-    const Vertex va = source(chosen, m), vb = target(chosen, m);
-    const Vertex vc = target(next(chosen, m), m);
-    const Vertex vd = target(next(ho, m), m);
-    const Point a=m.point(va), b=m.point(vb), c=m.point(vc), d=m.point(vd);
-    const Point p=CGAL::midpoint(a,b);
-    const Vector n0=normal(a,b,c), n1=normal(b,a,d);
+    const Vertex va=source(chosen,m),vb=target(chosen,m),
+                 vc=target(next(chosen,m),m),vd=target(next(ho,m),m);
+    const Point a=m.point(va),b=m.point(vb),
+                c=m.point(vc),d=m.point(vd);
+    const Point p=CGAL::midpoint(a,b); // exact PL split; do not project
+    const Vector n0=normal(a,b,c),n1=normal(b,a,d);
     if (!acceptable_triangle(a,p,c,n0) ||
         !acceptable_triangle(p,b,c,n0) ||
         !acceptable_triangle(b,p,d,n1) ||
         !acceptable_triangle(p,a,d,n1))
         return reject(RejectCause::geometry);
 
-    // Evaluate the *processed large-angle triangle*, rather than requiring
-    // the worst angle over BOTH adjacent triangles to improve immediately.
-    // The shared-edge split can initially worsen its neighbor; the following
-    // angle-ranked flip and later passes handle those secondary angles.
-    const double before=triangle_angles(a,b,c).max;
-    const double after=(std::max)(triangle_angles(a,p,c).max,
-                                   triangle_angles(p,b,c).max);
-    if (!(after < before - 1e-7)) return reject(RejectCause::no_improvement);
+    const std::array<std::array<Point,3>,4> created{{
+        {{a,p,c}},{{p,b,c}},{{b,p,d}},{{p,a,d}}
+    }};
+    // Each pair (u,v) is the oriented boundary edge of the corresponding
+    // split triangle, i.e. that triangle has cyclic order (u,v,p).
+    const std::array<std::pair<Vertex,Vertex>,4> outer{{
+        {vc,va},{vb,vc},{vd,vb},{va,vd}
+    }};
 
-    const auto oldV=m.number_of_vertices(), oldF=m.number_of_faces();
-    const Face f0=face(chosen,m), f1=face(ho,m);
+    int best_index=-1;
+    double best_score=(std::numeric_limits<double>::infinity)();
+    for (int i=0;i<4;++i) {
+        const Vertex u=outer[i].first,v=outer[i].second;
+        const Halfedge h=m.halfedge(u,v);
+        if (h==Mesh::null_halfedge()) continue;
+        const Edge e=edge(h,m);
+        if (is_feature_edge(m,e,opt)) continue;
+        // After the shared-edge split, c and d gain a new connection to p.
+        const std::size_t du=m.degree(u)+(u==vc||u==vd?1:0);
+        const std::size_t dv=m.degree(v)+(v==vc||v==vd?1:0);
+        if (du<4 || dv<4) continue;
+        Face outside=face(h,m);
+        if (outside==face(chosen,m) || outside==face(ho,m))
+            outside=face(opposite(h,m),m);
+        if (outside==Mesh::null_face()) continue;
+        const auto ov=vertices_of(m,outside);
+        Vertex x=Mesh::null_vertex();
+        for (const Vertex t : ov)
+            if (t!=u && t!=v) x=t;
+        if (x==Mesh::null_vertex() || x==va || x==vb) continue;
+        const Point pu=m.point(u),pv=m.point(v),px=m.point(x);
+        const Vector old_inner=normal(pu,pv,p);
+        const Vector old_outer=normal(pv,pu,px);
+        if (!acceptable_triangle(p,px,pv,old_inner) ||
+            !acceptable_triangle(px,p,pu,old_outer)) continue;
+
+        // Evaluate the 5-face patch (4 split faces plus one outside face)
+        // AFTER the candidate flip, before mutating the input mesh.
+        double after_violation=0.0, after_energy=0.0;
+        for (int j=0;j<4;++j) if (j!=i) {
+            const auto& t=created[j];
+            after_violation+=large_angle_violation(t[0],t[1],t[2],opt.max_angle);
+            after_energy+=angle_energy(t[0],t[1],t[2]);
+        }
+        after_violation+=large_angle_violation(p,px,pv,opt.max_angle);
+        after_violation+=large_angle_violation(px,p,pu,opt.max_angle);
+        after_energy+=angle_energy(p,px,pv)+angle_energy(px,p,pu);
+        const double before_violation=
+            large_angle_violation(a,b,c,opt.max_angle)+
+            large_angle_violation(b,a,d,opt.max_angle)+
+            large_angle_violation(m.point(ov[0]),m.point(ov[1]),
+                                  m.point(ov[2]),opt.max_angle);
+        if (after_violation + 1e-7 < before_violation &&
+            after_energy < best_score) {
+            best_score=after_energy;
+            best_index=i;
+        }
+    }
+
+    const double original_max=triangle_angles(a,b,c).max;
+    const double split_target_max=(std::max)(
+        triangle_angles(a,p,c).max,triangle_angles(p,b,c).max);
+    const bool split_only_improves=split_target_max<original_max-1e-7;
+    if (best_index<0 && !split_only_improves)
+        return reject(RejectCause::no_improvement);
+
+    const auto oldV=m.number_of_vertices(),oldF=m.number_of_faces();
+    const Face f0=face(chosen,m),f1=face(ho,m);
     const Halfedge new_h=CGAL::Euler::split_edge(chosen,m);
     const Vertex vm=target(new_h,m);
     m.point(vm)=p;
     if (!split_quad(m,f0,vm) || !split_quad(m,f1,vm))
         throw std::runtime_error("Split did not generate two triangular pairs");
-    verify_delta(m, oldV, oldF, 1, 2, "split");
+    verify_delta(m,oldV,oldF,1,2,"split");
 
-    const std::array<std::pair<Vertex,Vertex>,4> outer_edges{{
-        {va,vc},{vc,vb},{vb,vd},{vd,va}
-    }};
-    Edge best_edge=Mesh::null_edge();
-    double best_energy=(std::numeric_limits<double>::infinity)();
-    for (const auto& uv : outer_edges) {
+    if (best_index>=0) {
+        const auto uv=outer[best_index];
         const Halfedge h=m.halfedge(uv.first,uv.second);
-        if (h==Mesh::null_halfedge()) continue;
-        const Edge e=edge(h,m);
-        double score=0.0;
-        if (evaluate_angle_flip(m,e,opt,score) && score<best_energy) {
-            best_energy=score;
-            best_edge=e;
-        }
-    }
-    if (best_edge!=Mesh::null_edge()) {
-        CGAL::Euler::flip_edge(halfedge(best_edge,m),m);
+        if (h==Mesh::null_halfedge())
+            throw std::runtime_error("Chosen preflight flip edge vanished");
+        CGAL::Euler::flip_edge(h,m);
         if (successful_angle_flips) ++*successful_angle_flips;
-        verify_delta(m, oldV, oldF, 1, 2, "split+angle-flip");
+        verify_delta(m,oldV,oldF,1,2,"split+angle-flip");
     }
-    // If no valid flip exists, keep the strictly angle-improving split. This
-    // fallback is an explicit approximation, not a faithful Fig. 4 operation.
+    // The simple split fallback is allowed only when the targeted obtuse
+    // triangle improves. Full Fig. 4(c-f) feature patterns are still missing.
     return true;
 }
 
