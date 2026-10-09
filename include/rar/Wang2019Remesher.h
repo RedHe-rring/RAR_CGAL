@@ -97,8 +97,7 @@ inline void verify_delta(const Mesh& m,
     const auto expected_v = static_cast<std::ptrdiff_t>(old_vertices) + expected_vertices;
     const auto expected_f = static_cast<std::ptrdiff_t>(old_faces) + expected_faces;
     if (static_cast<std::ptrdiff_t>(num_vertices(m)) != expected_v ||
-        static_cast<std::ptrdiff_t>(num_faces(m)) != expected_f ||
-        false) {
+        static_cast<std::ptrdiff_t>(num_faces(m)) != expected_f) {
         throw std::runtime_error(std::string("Wang2019 ") + operation +
                                  " produced an invalid mesh or unexpected delta V/F");
     }
@@ -441,34 +440,41 @@ inline void tangential_smooth(Mesh& m, const Tree& reference,
         std::vector<std::pair<Vertex, Point>> proposed;
         for (const Vertex v : vertices(m)) {
             if (is_protected(fixed, v) || m.is_border(v)) continue;
-            const Halfedge h = halfedge(v, m);
-            if (h == Mesh::null_halfedge()) continue;
-            double x = 0, y = 0, z = 0;
-            std::size_t count = 0;
-            for (const Vertex neighbor : CGAL::vertices_around_target(h, m)) {
-                const Point& p = m.point(neighbor);
-                x += p.x(); y += p.y(); z += p.z(); ++count;
-            }
-            if (count < 3) continue;
-            const Point old = m.point(v);
-            const Vector lap = Point(x/count, y/count, z/count) - old;
-            Vector n = CGAL::NULL_VECTOR;
             std::set<Face> adjacent;
             incident_faces(m, v, adjacent);
+            if (adjacent.size() < 3) continue;
+
+            // Eq. (1): neighboring triangle centroids, not the mean of
+            // adjacent vertex coordinates. Triangle area is used as w_j here;
+            // the paper does not define the precise weights in Sec. 4.2.3.
+            double sum_x=0, sum_y=0, sum_z=0, weight_sum=0;
+            Vector vertex_normal=CGAL::NULL_VECTOR;
             for (const Face f : adjacent) {
-                const auto t = vertices_of(m, f);
-                n = n + normal(m.point(t[0]), m.point(t[1]), m.point(t[2]));
+                const auto tri=vertices_of(m,f);
+                const Point pa=m.point(tri[0]),pb=m.point(tri[1]),pc=m.point(tri[2]);
+                const Vector normal_vector=normal(pa,pb,pc);
+                const double twice_area=std::sqrt(norm2(normal_vector));
+                if (twice_area <= 1e-16) continue;
+                sum_x+=(pa.x()+pb.x()+pc.x())/3.0*twice_area;
+                sum_y+=(pa.y()+pb.y()+pc.y())/3.0*twice_area;
+                sum_z+=(pa.z()+pb.z()+pc.z())/3.0*twice_area;
+                weight_sum+=twice_area;
+                vertex_normal=vertex_normal+normal_vector;
             }
-            const double nn = norm2(n);
-            if (nn < 1e-28) continue;
-            const Vector tangent = lap - n * (dot(lap, n) / nn);
-            const Point trial = old + tangent * 0.5;
-            proposed.emplace_back(v, opt.project ? reference.closest_point(trial) : trial);
+            const double nn=norm2(vertex_normal);
+            if (weight_sum <= 0 || nn < 1e-28) continue;
+            const Point old=m.point(v);
+            const Vector direction=Point(sum_x/weight_sum,
+                                         sum_y/weight_sum,
+                                         sum_z/weight_sum)-old;
+            const Vector tangent=direction-
+                vertex_normal*(dot(direction,vertex_normal)/nn);
+            const Point trial=old+tangent;
+            proposed.emplace_back(v,opt.project?reference.closest_point(trial):trial);
         }
-        for (const auto& move : proposed) {
-            if (vertex_move_valid(m, move.first, move.second))
-                m.point(move.first) = move.second;
-        }
+        for (const auto& move : proposed)
+            if (vertex_move_valid(m,move.first,move.second))
+                m.point(move.first)=move.second;
     }
 }
 
