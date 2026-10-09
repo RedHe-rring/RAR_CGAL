@@ -122,6 +122,21 @@ int main() {
         RejectionStats rejected;
         bool inserted=false;
         std::size_t angle_flips=0;
+        // Verify Sec. 4.2.4 threshold behavior independently of collapsing:
+        // beta_min is preserved while enough triangles already violate it,
+        // and is raised only when more deletion candidates are needed.
+        std::vector<Face> sorted_faces;
+        for (const Face f : faces(grid)) sorted_faces.push_back(f);
+        std::sort(sorted_faces.begin(), sorted_faces.end(),
+                  [&](Face x, Face y) {
+                      return angles_of(grid,x).min<angles_of(grid,y).min;
+                  });
+        const double min_angle=angles_of(grid,sorted_faces[0]).min;
+        const double unchanged=small_angle_threshold_for_count(grid,sorted_faces,60.0,1);
+        const double relaxed=small_angle_threshold_for_count(grid,sorted_faces,1.0,1);
+        const double none=small_angle_threshold_for_count(grid,sorted_faces,30.0,0);
+        if (unchanged!=60.0 || !(relaxed>min_angle) || none!=30.0)
+            throw std::runtime_error("Incorrect beta_min candidate relaxation");
         const auto n0=grid.number_of_vertices();
         const auto f0=grid.number_of_faces();
         std::vector<Face> bad;
