@@ -17,7 +17,8 @@ void usage() {
         "  --min-angle D      small-angle threshold in degrees (default 30)\n"
         "  --max-angle D      large-angle threshold in degrees (default 90)\n"
         "  --rounds N         maximal alternating rounds (default 10)\n"
-        "  --budget F         attempted operations / bad triangle count (default 0.02)\n"
+        "  --k-ratio F        fraction of bad triangles per stage (default 0.20)\n"
+        "  --budget F         deprecated alias for --k-ratio\n"
         "  --k N              override automatic number of operations per stage\n"
         "  --allow-drift      allow vertex count changes instead of rollback\n"
         "  --smooth N         tangential smoothing sweeps (default 3)\n"
@@ -47,7 +48,7 @@ int main(int argc, char** argv) {
             if (arg == "--min-angle") opt.min_angle = std::stod(value());
             else if (arg == "--max-angle") opt.max_angle = std::stod(value());
             else if (arg == "--rounds") opt.rounds = static_cast<unsigned>(std::stoul(value()));
-            else if (arg == "--budget") opt.budget_fraction = std::stod(value());
+            else if (arg == "--budget" || arg == "--k-ratio") opt.budget_fraction = std::stod(value());
             else if (arg == "--k") opt.k = static_cast<unsigned>(std::stoul(value()));
             else if (arg == "--allow-drift") opt.strict_vertex_count = false;
             else if (arg == "--smooth") opt.smoothing_steps = static_cast<unsigned>(std::stoul(value()));
