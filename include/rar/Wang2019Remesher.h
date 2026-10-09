@@ -493,102 +493,163 @@ inline Statistics analyze(const Mesh& m, const Options& opt) {
 }
 
 inline Statistics run(Mesh& mesh, const Options& opt) {
-    if (!CGAL::is_triangle_mesh(mesh) || num_faces(mesh) == 0)
-        throw std::invalid_argument("Wang2019 requires a nonempty triangle mesh");
-    if (!(opt.min_angle > 0.0 && opt.min_angle < 60.0 &&
-          opt.max_angle > 60.0 && opt.max_angle < 180.0 &&
-          opt.budget_fraction > 0.0 && opt.budget_fraction <= 1.0 &&
-          opt.feature_angle > 0.0 && opt.feature_angle < 180.0))
-        throw std::invalid_argument("Invalid angle, feature, or operation-budget bounds");
+    if (!CGAL::is_triangle_mesh(mesh) || num_faces(mesh)==0 || !mesh.is_valid())
+        throw std::invalid_argument("Wang2019 requires a valid, nonempty triangle mesh");
+    if (!(opt.min_angle>0.0 && opt.min_angle<60.0 &&
+          opt.max_angle>60.0 && opt.max_angle<180.0 &&
+          opt.budget_fraction>0.0 && opt.budget_fraction<=1.0 &&
+          opt.feature_angle>0.0 && opt.feature_angle<180.0))
+        throw std::invalid_argument("Invalid angle or operation-budget bounds");
 
-    // Projection must use the original input, not the dynamically edited mesh.
     const Mesh original(mesh);
-    Tree reference(faces(original).first, faces(original).second, original);
+    Tree reference(faces(original).first,faces(original).second,original);
     reference.accelerate_distance_queries();
 
     Statistics total;
-    total.vertices_before = num_vertices(mesh);
-    total.faces_before = num_faces(mesh);
-    // Recomputed each round; new vertices are unrestricted, while original
-    // boundary and sharp vertices remain frozen (conservative approximation).
-    for (unsigned round = 0; round < opt.rounds; ++round) {
-        std::set<Vertex> fixed = protected_vertices(mesh,
-            opt.protect_features ? opt.feature_angle : 179.999);
-        if (!opt.protect_features) {
-            fixed.clear();
-            for (const Vertex v : vertices(mesh))
-                if (mesh.is_border(v)) fixed.insert(v);
-        }
-        const std::size_t budget = (std::max)(std::size_t(1),
-            static_cast<std::size_t>(std::ceil(opt.budget_fraction * num_vertices(mesh))));
-        std::size_t added = 0, removed = 0, flipped = 0;
+    total.vertices_before=num_vertices(mesh);
+    total.faces_before=num_faces(mesh);
 
-        std::vector<Face> descending;
+    const auto feature_vertices = [&]() {
+        std::set<Vertex> fixed;
+        if (opt.protect_features)
+            return protected_vertices(mesh,opt.feature_angle);
+        for (const Vertex v : vertices(mesh))
+            if (mesh.is_border(v)) fixed.insert(v);
+        return fixed;
+    };
+    const auto valence_stage = [&]() {
+        std::size_t flips=0;
+        const std::set<Vertex> fixed=feature_vertices();
+        std::vector<Edge> candidates;
+        for (const Edge e : edges(mesh)) candidates.push_back(e);
+        for (const Edge e : candidates)
+            if (flip_if_better(mesh,e,fixed)) ++flips;
+        tangential_smooth(mesh,reference,opt,feature_vertices());
+        return flips;
+    };
+
+    for (unsigned round=0;round<opt.rounds;++round) {
+        const Statistics initial=analyze(mesh,opt);
+        if (!initial.min_angle_violations && !initial.max_angle_violations) break;
+
+        // A full round copy is intentionally used for correctness here. For
+        // massive meshes, a local undo log would be more memory efficient.
+        Mesh round_backup;
+        if (opt.strict_vertex_count) round_backup=mesh;
+        const auto round_vertices=num_vertices(mesh);
+        const auto round_faces=num_faces(mesh);
+        RejectionStats split_rejections, collapse_rejections;
+
+        std::vector<Face> large;
         for (const Face f : faces(mesh))
-            if (angles_of(mesh, f).max > opt.max_angle) descending.push_back(f);
-        std::sort(descending.begin(), descending.end(), [&](Face a, Face b) {
-            return angles_of(mesh, a).max > angles_of(mesh, b).max;
+            if (angles_of(mesh,f).max > opt.max_angle) large.push_back(f);
+        std::sort(large.begin(),large.end(),[&](Face x, Face y) {
+            return angles_of(mesh,x).max > angles_of(mesh,y).max;
         });
-        for (const Face f : descending) {
-            if (added >= budget) break;
-            if (insert_at_large_angle(mesh, f, reference, opt, fixed)) ++added;
+        std::size_t k=opt.k ?
+            static_cast<std::size_t>(opt.k) :
+            (std::max)(std::size_t(1),
+                static_cast<std::size_t>(std::ceil(
+                  opt.budget_fraction*(std::max)(
+                    initial.min_angle_violations,initial.max_angle_violations))));
+        k=(std::min)(k,large.size());
+
+        std::size_t added=0, removed=0, angle_flips=0;
+        std::set<Vertex> fixed=feature_vertices();
+        for (const Face f : large) {
+            if (added>=k) break;
+            if (insert_at_large_angle(mesh,f,reference,opt,fixed,
+                                      &split_rejections,&angle_flips))
+                ++added;
         }
 
-        // Refresh sharp-feature classification after insertions.
-        fixed = protected_vertices(mesh,
-            opt.protect_features ? opt.feature_angle : 179.999);
-        if (!opt.protect_features) {
-            fixed.clear();
-            for (const Vertex v : vertices(mesh))
-                if (mesh.is_border(v)) fixed.insert(v);
-        }
+        // Algorithm 1: valence optimization and smoothing happen BETWEEN
+        // the insertion and deletion stages, not only after both stages.
+        const std::size_t first_flips=valence_stage();
+        const std::size_t target_removals=opt.strict_vertex_count ? added : k;
 
-        std::vector<Face> ascending;
+        std::vector<Face> small;
         for (const Face f : faces(mesh))
-            if (angles_of(mesh, f).min < opt.min_angle) ascending.push_back(f);
-        std::sort(ascending.begin(), ascending.end(), [&](Face a, Face b) {
-            return angles_of(mesh, a).min < angles_of(mesh, b).min;
+            if (angles_of(mesh,f).min < 60.0) small.push_back(f);
+        std::sort(small.begin(),small.end(),[&](Face x, Face y) {
+            return angles_of(mesh,x).min < angles_of(mesh,y).min;
         });
-        for (const Face f : ascending) {
-            if (removed >= budget) break;
-            if (collapse_at_small_angle(mesh, f, reference, opt, fixed)) ++removed;
+        fixed=feature_vertices();
+        // Section 4.2.4 allows temporarily raising beta_min if fewer
+        // than k triangles violate the user bound. We try such candidates
+        // in increasing min-angle order, without exceeding 60 degrees.
+        for (const Face f : small) {
+            if (removed>=target_removals) break;
+            Options acceptance=opt;
+            acceptance.min_angle=60.0;
+            if (collapse_at_small_angle(mesh,f,reference,acceptance,fixed,
+                                         &collapse_rejections))
+                ++removed;
         }
 
-        fixed = protected_vertices(mesh,
-            opt.protect_features ? opt.feature_angle : 179.999);
-        if (!opt.protect_features) {
-            fixed.clear();
-            for (const Vertex v : vertices(mesh))
-                if (mesh.is_border(v)) fixed.insert(v);
-        }
-        std::vector<Edge> edge_snapshot;
-        for (const Edge e : edges(mesh)) edge_snapshot.push_back(e);
-        for (const Edge e : edge_snapshot)
-            if (flip_if_better(mesh, e, fixed)) ++flipped;
+        const std::size_t second_flips=valence_stage();
+        if (!mesh.is_valid() || !CGAL::is_triangle_mesh(mesh))
+            throw std::runtime_error("Wang2019: invalid mesh after iteration");
+        const auto actual_delta=static_cast<std::ptrdiff_t>(num_vertices(mesh))-
+                                static_cast<std::ptrdiff_t>(round_vertices);
+        if (actual_delta!=static_cast<std::ptrdiff_t>(added)-
+                           static_cast<std::ptrdiff_t>(removed) ||
+            static_cast<std::ptrdiff_t>(num_faces(mesh))-
+                static_cast<std::ptrdiff_t>(round_faces)!=
+                        2*(static_cast<std::ptrdiff_t>(added)-
+                           static_cast<std::ptrdiff_t>(removed)))
+            throw std::runtime_error("Wang2019: iteration V/F topology delta mismatch");
 
-        tangential_smooth(mesh, reference, opt, fixed);
-        total.insertions += added;
-        total.collapses += removed;
-        total.flips += flipped;
+        const std::size_t all_flips=first_flips+second_flips+angle_flips;
+        if (opt.strict_vertex_count && added!=removed) {
+            mesh=std::move(round_backup);
+            ++total.rolled_back_rounds;
+            if (opt.verbose)
+                std::cout << "[Wang2019] round=" << round+1
+                          << " ROLLBACK: inserted " << added
+                          << " but only " << removed
+                          << " legal collapses; preserving target N\n";
+            // No committed update -> avoid repeating the same unsuccessful round.
+            break;
+        }
+
+        total.insertions+=added;
+        total.collapses+=removed;
+        total.flips+=all_flips;
+        const Statistics current=analyze(mesh,opt);
         if (opt.verbose) {
-            const Statistics a = analyze(mesh, opt);
-            std::cout << "[Wang2019] round=" << (round+1)
+            std::cout << "[Wang2019] round=" << round+1
+                      << " k=" << k
                       << " insert=" << added << " collapse=" << removed
-                      << " flip=" << flipped << " V=" << a.vertices_after
-                      << " min_angle=" << a.angles.min
-                      << " max_angle=" << a.angles.max
-                      << " below=" << a.min_angle_violations
-                      << " above=" << a.max_angle_violations << '\n';
+                      << " flip=" << all_flips
+                      << " V=" << current.vertices_after
+                      << " min_angle=" << current.angles.min
+                      << " max_angle=" << current.angles.max
+                      << " below=" << current.min_angle_violations
+                      << " above=" << current.max_angle_violations << '\n';
+            for (std::size_t i=0;i<split_rejections.rejected.size();++i)
+                if (split_rejections.rejected[i] || collapse_rejections.rejected[i])
+                    std::cout << "[Wang2019] rejected_" << cause_name(i)
+                              << " split=" << split_rejections.rejected[i]
+                              << " collapse=" << collapse_rejections.rejected[i] << '\n';
         }
-        if (added == 0 && removed == 0 && flipped == 0) break;
+        if (!current.min_angle_violations && !current.max_angle_violations)
+            break;
+        if (!added && !removed && !all_flips &&
+            current.min_angle_violations>=initial.min_angle_violations &&
+            current.max_angle_violations>=initial.max_angle_violations)
+            break;
     }
-    const Statistics last = analyze(mesh, opt);
-    total.vertices_after = last.vertices_after;
-    total.faces_after = last.faces_after;
-    total.min_angle_violations = last.min_angle_violations;
-    total.max_angle_violations = last.max_angle_violations;
-    total.angles = last.angles;
+    const Statistics last=analyze(mesh,opt);
+    total.vertices_after=last.vertices_after;
+    total.faces_after=last.faces_after;
+    total.min_angle_violations=last.min_angle_violations;
+    total.max_angle_violations=last.max_angle_violations;
+    total.angles=last.angles;
+    if (opt.strict_vertex_count && total.vertices_after!=total.vertices_before)
+        throw std::runtime_error("Wang2019 strict-N invariant violated");
     return total;
 }
+
 } // namespace wang2019
 } // namespace rar
