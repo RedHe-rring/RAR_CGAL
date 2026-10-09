@@ -546,6 +546,23 @@ inline Statistics analyze(const Mesh& m, const Options& opt) {
     return s;
 }
 
+inline double small_angle_threshold_for_count(const Mesh& mesh,
+                                              const std::vector<Face>& sorted_faces,
+                                              double requested_beta_min,
+                                              std::size_t required_count) {
+    if (required_count==0 || sorted_faces.empty()) return requested_beta_min;
+    std::size_t violating=0;
+    for (const Face f : sorted_faces)
+        if (angles_of(mesh,f).min<requested_beta_min) ++violating;
+    if (violating>=required_count) return requested_beta_min;
+    // The input list is sorted by increasing minimum angle.
+    const std::size_t last=(std::min)(required_count,sorted_faces.size())-1;
+    const double increased=(std::max)(requested_beta_min,
+                                       angles_of(mesh,sorted_faces[last]).min);
+    return std::nextafter(increased,
+                          (std::numeric_limits<double>::infinity)());
+}
+
 inline Statistics run(Mesh& mesh, const Options& opt) {
     if (!CGAL::is_triangle_mesh(mesh) || mesh.number_of_faces()==0 || !mesh.is_valid())
         throw std::invalid_argument("Wang2019 requires a valid, nonempty triangle mesh");
@@ -643,17 +660,8 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
             });
             // Sec. 4.2.4: temporary relaxation only if the candidate count
             // below the specified beta_min is insufficient for this batch.
-            std::size_t below_user_bound=0;
-            for (const Face f : small)
-                if (angles_of(mesh,f).min<opt.min_angle) ++below_user_bound;
-            double raised_beta=opt.min_angle;
-            if (below_user_bound<target_removals && target_removals>0 &&
-                !small.empty()) {
-                const std::size_t last=(std::min)(target_removals,small.size())-1;
-                raised_beta=std::nextafter(
-                    (std::max)(opt.min_angle,angles_of(mesh,small[last]).min),
-                    (std::numeric_limits<double>::infinity)());
-            }
+            const double raised_beta=small_angle_threshold_for_count(
+                mesh,small,opt.min_angle,target_removals);
             fixed=feature_vertices();
             Options acceptance=opt;
             acceptance.min_angle=raised_beta;
