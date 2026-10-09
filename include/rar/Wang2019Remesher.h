@@ -24,6 +24,7 @@
 #include <limits>
 #include <set>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -50,7 +51,9 @@ struct Options {
     double feature_angle = 50.0;    // dihedral degrees
     unsigned rounds = 10;
     unsigned smoothing_steps = 3;
-    double budget_fraction = 0.02;  // at most this fraction of initial N / pass
+    double budget_fraction = 0.02;  // fraction of currently bad triangles (not N)
+    unsigned k = 0;                 // optional explicit per-stage attempt budget
+    bool strict_vertex_count = true; // roll back a round if split/collapse cannot balance
     bool protect_features = true;
     bool project = true;
     bool verbose = true;
@@ -65,6 +68,7 @@ struct Statistics {
     std::size_t insertions = 0;
     std::size_t collapses = 0;
     std::size_t flips = 0;
+    std::size_t rolled_back_rounds = 0;
     std::size_t vertices_before = 0;
     std::size_t vertices_after = 0;
     std::size_t faces_before = 0;
@@ -73,6 +77,32 @@ struct Statistics {
     std::size_t max_angle_violations = 0;
     Angles angles;
 };
+
+enum class RejectCause : std::size_t {
+    stale = 0, boundary, feature, geometry, no_improvement, topology, count
+};
+struct RejectionStats {
+    std::array<std::size_t, 7> rejected{};
+    void record(RejectCause cause) { ++rejected[static_cast<std::size_t>(cause)]; }
+};
+inline const char* cause_name(std::size_t i) {
+    const char* names[] = {"stale", "boundary", "feature", "geometry",
+                           "no-improvement", "topology", "count"};
+    return names[i];
+}
+inline void verify_delta(const Mesh& m,
+                         std::size_t old_vertices, std::size_t old_faces,
+                         int expected_vertices, int expected_faces,
+                         const char* operation) {
+    const auto expected_v = static_cast<std::ptrdiff_t>(old_vertices) + expected_vertices;
+    const auto expected_f = static_cast<std::ptrdiff_t>(old_faces) + expected_faces;
+    if (static_cast<std::ptrdiff_t>(num_vertices(m)) != expected_v ||
+        static_cast<std::ptrdiff_t>(num_faces(m)) != expected_f ||
+        !CGAL::is_triangle_mesh(m) || !m.is_valid()) {
+        throw std::runtime_error(std::string("Wang2019 ") + operation +
+                                 " produced an invalid mesh or unexpected delta V/F");
+    }
+}
 
 inline double norm2(const Vector& v) {
     return CGAL::to_double(v.squared_length());
@@ -159,8 +189,14 @@ inline bool split_quad(Mesh& m, Face f, Vertex vm) {
 }
 
 inline bool insert_at_large_angle(Mesh& m, Face f, const Tree& reference,
-                                  const Options& opt, const std::set<Vertex>& fixed) {
-    if (m.is_removed(f) || angles_of(m, f).max <= opt.max_angle) return false;
+                                  const Options& opt, const std::set<Vertex>& fixed,
+                                  RejectionStats* reasons = nullptr) {
+    auto reject = [&](RejectCause cause) {
+        if (reasons) reasons->record(cause);
+        return false;
+    };
+    if (m.is_removed(f) || angles_of(m, f).max <= opt.max_angle)
+        return reject(RejectCause::stale);
     // The edge opposite a triangle's largest angle is its longest edge.
     Halfedge chosen = halfedge(f, m);
     double max_len2 = -1.0;
@@ -169,14 +205,14 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree& reference,
         if (d2 > max_len2) { max_len2 = d2; chosen = h; }
     }
     const Halfedge ho = opposite(chosen, m);
-    if (is_border(chosen, m) || is_border(ho, m)) return false;
+    if (is_border(chosen, m) || is_border(ho, m)) return reject(RejectCause::boundary);
     const Vertex va = source(chosen, m), vb = target(chosen, m);
-    if (is_protected(fixed, va) || is_protected(fixed, vb)) return false;
+    if (is_protected(fixed, va) || is_protected(fixed, vb)) return reject(RejectCause::feature);
     const Vertex vc = target(next(chosen, m), m);
     const Vertex vd = target(next(ho, m), m);
     // Moving an edge next to a feature corner is deliberately disallowed in
     // this first prototype; it is stricter than the paper's feature rules.
-    if (is_protected(fixed, vc) || is_protected(fixed, vd)) return false;
+    if (is_protected(fixed, vc) || is_protected(fixed, vd)) return reject(RejectCause::feature);
     const Point a = m.point(va), b = m.point(vb);
     const Point c = m.point(vc), d = m.point(vd);
     const Point midpoint = CGAL::midpoint(a, b);
@@ -185,21 +221,23 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree& reference,
     if (!acceptable_triangle(a, p, c, n0) ||
         !acceptable_triangle(p, b, c, n0) ||
         !acceptable_triangle(b, p, d, n1) ||
-        !acceptable_triangle(p, a, d, n1)) return false;
+        !acceptable_triangle(p, a, d, n1)) return reject(RejectCause::geometry);
     const double before = (std::max)(triangle_angles(a, b, c).max,
                                       triangle_angles(b, a, d).max);
     const double after = (std::max)({
         triangle_angles(a, p, c).max, triangle_angles(p, b, c).max,
         triangle_angles(b, p, d).max, triangle_angles(p, a, d).max
     });
-    if (after >= before - 1e-7) return false;
+    if (after >= before - 1e-7) return reject(RejectCause::no_improvement);
 
+    const auto old_vertices = num_vertices(m), old_faces = num_faces(m);
     const Face f0 = face(chosen, m), f1 = face(ho, m);
     const Halfedge new_h = CGAL::Euler::split_edge(chosen, m);
     const Vertex vm = target(new_h, m);
     m.point(vm) = p;
     if (!split_quad(m, f0, vm) || !split_quad(m, f1, vm))
         throw std::runtime_error("Euler edge split left an unexpected non-quad face");
+    verify_delta(m, old_vertices, old_faces, +1, +2, "split");
     return true;
 }
 
@@ -212,8 +250,14 @@ inline void incident_faces(const Mesh& m, Vertex v, std::set<Face>& dst) {
 }
 
 inline bool collapse_at_small_angle(Mesh& m, Face f, const Tree& reference,
-                                    const Options& opt, const std::set<Vertex>& fixed) {
-    if (m.is_removed(f) || angles_of(m, f).min >= opt.min_angle) return false;
+                                    const Options& opt, const std::set<Vertex>& fixed,
+                                    RejectionStats* reasons = nullptr) {
+    auto reject = [&](RejectCause cause) {
+        if (reasons) reasons->record(cause);
+        return false;
+    };
+    if (m.is_removed(f) || angles_of(m, f).min >= opt.min_angle)
+        return reject(RejectCause::stale);
     Halfedge shortest = halfedge(f, m);
     double min_len2 = (std::numeric_limits<double>::max)();
     for (const Halfedge h : CGAL::halfedges_around_face(halfedge(f, m), m)) {
@@ -221,9 +265,10 @@ inline bool collapse_at_small_angle(Mesh& m, Face f, const Tree& reference,
         if (d2 < min_len2) { min_len2 = d2; shortest = h; }
     }
     const Edge e = edge(shortest, m);
-    if (is_border(e, m) || !CGAL::Euler::does_satisfy_link_condition(e, m)) return false;
+    if (is_border(e, m)) return reject(RejectCause::boundary);
+    if (!CGAL::Euler::does_satisfy_link_condition(e, m)) return reject(RejectCause::topology);
     const Vertex va = source(shortest, m), vb = target(shortest, m);
-    if (is_protected(fixed, va) || is_protected(fixed, vb)) return false;
+    if (is_protected(fixed, va) || is_protected(fixed, vb)) return reject(RejectCause::feature);
     std::set<Face> affected;
     incident_faces(m, va, affected);
     incident_faces(m, vb, affected);
@@ -245,16 +290,18 @@ inline bool collapse_at_small_angle(Mesh& m, Face f, const Tree& reference,
         const Point na = (vv[0] == va || vv[0] == vb) ? p : a;
         const Point nb = (vv[1] == va || vv[1] == vb) ? p : b;
         const Point nc = (vv[2] == va || vv[2] == vb) ? p : c;
-        if (!acceptable_triangle(na, nb, nc, normal(a, b, c))) return false;
+        if (!acceptable_triangle(na, nb, nc, normal(a, b, c))) return reject(RejectCause::geometry);
         const Angles newer = triangle_angles(na, nb, nc);
         min_after = (std::min)(min_after, newer.min);
         max_after = (std::max)(max_after, newer.max);
         any_remaining = true;
     }
     if (!any_remaining || min_after <= min_before + 1e-7 ||
-        max_after > (std::max)(max_before, opt.max_angle + 5.0)) return false;
+        max_after > (std::max)(max_before, opt.max_angle + 5.0)) return reject(RejectCause::no_improvement);
+    const auto old_vertices = num_vertices(m), old_faces = num_faces(m);
     const Vertex kept = CGAL::Euler::collapse_edge(e, m);
     m.point(kept) = p;
+    verify_delta(m, old_vertices, old_faces, -1, -2, "collapse");
     return true;
 }
 
