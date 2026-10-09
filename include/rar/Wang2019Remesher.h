@@ -96,12 +96,12 @@ inline void verify_delta(const Mesh& m,
                          const char* operation) {
     const auto expected_v = static_cast<std::ptrdiff_t>(old_vertices) + expected_vertices;
     const auto expected_f = static_cast<std::ptrdiff_t>(old_faces) + expected_faces;
-    if (static_cast<std::ptrdiff_t>(num_vertices(m)) != expected_v ||
-        static_cast<std::ptrdiff_t>(num_faces(m)) != expected_f) {
+    if (static_cast<std::ptrdiff_t>(m.number_of_vertices()) != expected_v ||
+        static_cast<std::ptrdiff_t>(m.number_of_faces()) != expected_f) {
         throw std::runtime_error(std::string("Wang2019 ") + operation +
-            " V=" + std::to_string(num_vertices(m)) +
+            " V=" + std::to_string(m.number_of_vertices()) +
             " expected=" + std::to_string(expected_v) +
-            " F=" + std::to_string(num_faces(m)) +
+            " F=" + std::to_string(m.number_of_faces()) +
             " expected=" + std::to_string(expected_f));
     }
 }
@@ -284,7 +284,7 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
                                     triangle_angles(p,a,d).max});
     if (!(after < before - 1e-7)) return reject(RejectCause::no_improvement);
 
-    const auto oldV=num_vertices(m), oldF=num_faces(m);
+    const auto oldV=m.number_of_vertices(), oldF=m.number_of_faces();
     const Face f0=face(chosen,m), f1=face(ho,m);
     const Halfedge new_h=CGAL::Euler::split_edge(chosen,m);
     const Vertex vm=target(new_h,m);
@@ -375,7 +375,7 @@ inline bool collapse_at_small_angle(Mesh& m, Face f, const Tree& reference,
     }
     if (!any_remaining || min_after <= min_before + 1e-7 ||
         max_after > (std::max)(max_before, opt.max_angle + 5.0)) return reject(RejectCause::no_improvement);
-    const auto old_vertices = num_vertices(m), old_faces = num_faces(m);
+    const auto old_vertices = m.number_of_vertices(), old_faces = m.number_of_faces();
     const Vertex kept = CGAL::Euler::collapse_edge(e, m);
     m.point(kept) = p;
     verify_delta(m, old_vertices, old_faces, -1, -2, "collapse");
@@ -483,8 +483,8 @@ inline void tangential_smooth(Mesh& m, const Tree& reference,
 
 inline Statistics analyze(const Mesh& m, const Options& opt) {
     Statistics s;
-    s.vertices_after = num_vertices(m);
-    s.faces_after = num_faces(m);
+    s.vertices_after = m.number_of_vertices();
+    s.faces_after = m.number_of_faces();
     for (const Face f : faces(m)) {
         const Angles a = angles_of(m, f);
         s.angles.min = (std::min)(s.angles.min, a.min);
@@ -496,7 +496,7 @@ inline Statistics analyze(const Mesh& m, const Options& opt) {
 }
 
 inline Statistics run(Mesh& mesh, const Options& opt) {
-    if (!CGAL::is_triangle_mesh(mesh) || num_faces(mesh)==0 || !mesh.is_valid())
+    if (!CGAL::is_triangle_mesh(mesh) || mesh.number_of_faces()==0 || !mesh.is_valid())
         throw std::invalid_argument("Wang2019 requires a valid, nonempty triangle mesh");
     if (!(opt.min_angle>0.0 && opt.min_angle<60.0 &&
           opt.max_angle>60.0 && opt.max_angle<180.0 &&
@@ -509,8 +509,8 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
     reference.accelerate_distance_queries();
 
     Statistics total;
-    total.vertices_before=num_vertices(mesh);
-    total.faces_before=num_faces(mesh);
+    total.vertices_before=mesh.number_of_vertices();
+    total.faces_before=mesh.number_of_faces();
 
     const auto feature_vertices = [&]() {
         std::set<Vertex> fixed;
@@ -539,8 +539,8 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
         // massive meshes, a local undo log would be more memory efficient.
         Mesh round_backup;
         if (opt.strict_vertex_count) round_backup=mesh;
-        const auto round_vertices=num_vertices(mesh);
-        const auto round_faces=num_faces(mesh);
+        const auto round_vertices=mesh.number_of_vertices();
+        const auto round_faces=mesh.number_of_faces();
         RejectionStats split_rejections, collapse_rejections;
 
         std::vector<Face> large;
@@ -593,11 +593,11 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
         const std::size_t second_flips=valence_stage();
         if (!mesh.is_valid() || !CGAL::is_triangle_mesh(mesh))
             throw std::runtime_error("Wang2019: invalid mesh after iteration");
-        const auto actual_delta=static_cast<std::ptrdiff_t>(num_vertices(mesh))-
+        const auto actual_delta=static_cast<std::ptrdiff_t>(mesh.number_of_vertices())-
                                 static_cast<std::ptrdiff_t>(round_vertices);
         if (actual_delta!=static_cast<std::ptrdiff_t>(added)-
                            static_cast<std::ptrdiff_t>(removed) ||
-            static_cast<std::ptrdiff_t>(num_faces(mesh))-
+            static_cast<std::ptrdiff_t>(mesh.number_of_faces())-
                 static_cast<std::ptrdiff_t>(round_faces)!=
                         2*(static_cast<std::ptrdiff_t>(added)-
                            static_cast<std::ptrdiff_t>(removed)))
