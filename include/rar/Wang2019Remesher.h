@@ -623,19 +623,33 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
         const std::size_t target_removals=opt.strict_vertex_count ? added : k;
 
         std::vector<Face> small;
-        for (const Face f : faces(mesh))
-            if (angles_of(mesh,f).min < 60.0) small.push_back(f);
+        for (const Face f : faces(mesh)) small.push_back(f);
         std::sort(small.begin(),small.end(),[&](Face x, Face y) {
             return angles_of(mesh,x).min < angles_of(mesh,y).min;
         });
+
+        // Sec. 4.2.4: use the user-provided beta_min normally. Only raise it
+        // when there are fewer than target_removals qualifying candidates.
+        // A triangle's minimum angle is at most 60 degrees.
+        double effective_min_angle=opt.min_angle;
+        std::size_t below_user_bound=0;
+        for (const Face f : small)
+            if (angles_of(mesh,f).min<opt.min_angle) ++below_user_bound;
+        if (below_user_bound<target_removals && target_removals>0 &&
+            !small.empty()) {
+            const std::size_t last=(std::min)(target_removals,small.size())-1;
+            effective_min_angle=std::nextafter(
+                (std::max)(opt.min_angle,angles_of(mesh,small[last]).min),
+                (std::numeric_limits<double>::infinity)());
+        }
         fixed=feature_vertices();
-        // Section 4.2.4 allows temporarily raising beta_min if fewer
-        // than k triangles violate the user bound. We try such candidates
-        // in increasing min-angle order, without exceeding 60 degrees.
+        Options acceptance=opt;
+        acceptance.min_angle=effective_min_angle;
         for (const Face f : small) {
             if (removed>=target_removals) break;
-            Options acceptance=opt;
-            acceptance.min_angle=60.0;
+            // Do not begin processing triangles above the raised threshold.
+            if (!mesh.is_removed(f) &&
+                angles_of(mesh,f).min>=effective_min_angle) continue;
             if (collapse_at_small_angle(mesh,f,reference,acceptance,fixed,
                                          &collapse_rejections))
                 ++removed;
