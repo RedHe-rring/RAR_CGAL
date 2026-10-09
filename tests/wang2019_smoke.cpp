@@ -173,6 +173,7 @@ int main() {
         full.protect_features=false;
         full.strict_vertex_count=false;
         full.verbose=false;
+        Mesh balanced_grid(grid);
         const Statistics actual=run(grid,full);
         const auto delta_v=static_cast<std::ptrdiff_t>(actual.vertices_after)-
                            static_cast<std::ptrdiff_t>(actual.vertices_before);
@@ -180,6 +181,15 @@ int main() {
                      static_cast<std::ptrdiff_t>(actual.collapses) ||
             !grid.is_valid() || !CGAL::is_triangle_mesh(grid))
             throw std::runtime_error("Staged pipeline violated live vertex accounting");
+        Options balanced=full;
+        balanced.strict_vertex_count=true;
+        balanced.k=8; // force batch downsizing on difficult inputs
+        const Statistics balanced_stats=run(balanced_grid,balanced);
+        if (!balanced_grid.is_valid() || !CGAL::is_triangle_mesh(balanced_grid) ||
+            balanced_stats.vertices_before!=balanced_stats.vertices_after ||
+            balanced_stats.faces_before!=balanced_stats.faces_after ||
+            balanced_stats.insertions!=balanced_stats.collapses)
+            throw std::runtime_error("Strict-N rollback/retry failed");
         std::cout << "Grid pipeline PASS, inserts=" << actual.insertions
                   << ", collapses=" << actual.collapses
                   << ", flips=" << actual.flips << '\n';
