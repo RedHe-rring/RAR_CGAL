@@ -53,10 +53,27 @@ inline std::string make_parameterized_stem(
     std::ostringstream name;
     name << stem;
 
+    if (cfg.field_type == FieldType::CGALAdaptiveSDFThickness) {
+        // Keep automatic SDF result/diagnostic paths short on Windows while
+        // retaining every parameter that changes the generated field/output.
+        name << "__sdf-h0__e-" << filename_number(cfg.epsilon)
+             << "__mn-" << filename_number(cfg.min_edge_length)
+             << "__mx-" << filename_number(cfg.max_edge_length)
+             << "__r" << cfg.sdf_rays
+             << "__a" << filename_number(cfg.sdf_cone_angle_degrees)
+             << "__i" << cfg.iterations
+             << "__q" << cfg.relaxation_steps
+             << "__p" << (cfg.do_project ? 1 : 0)
+             << "__f" << (cfg.preserve_features ? 1 : 0);
+        if (cfg.preserve_features)
+            name << "__fa-" << filename_number(cfg.feature_angle_degrees);
+        name << "__b-" << remesh_backend_name(cfg.remesh_backend);
+        return name.str();
+    }
+
     switch (cfg.field_type) {
     case FieldType::CGALAdaptive:
     case FieldType::CGALAdaptiveRadius:
-    case FieldType::CGALAdaptiveSDFThickness:
     case FieldType::RAR:
         name
             << "__eps-"
@@ -92,11 +109,6 @@ inline std::string make_parameterized_stem(
             << filename_number(
                    cfg.csf_mesh_scale);
         break;
-    }
-
-    if (cfg.field_type == FieldType::CGALAdaptiveSDFThickness) {
-        name << "__sdf-rays-" << cfg.sdf_rays
-             << "__sdf-cone-" << filename_number(cfg.sdf_cone_angle_degrees);
     }
 
     name

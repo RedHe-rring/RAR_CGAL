@@ -93,7 +93,11 @@ inputs; those inputs will need separate attention before using this strict mode.
   explicitly makes future comparisons easier to reproduce.
 - `--iterations 0` constructs and exports the initial field without remeshing.
 - `--remesh-backend custom --remesh-diagnostics` enables inherited snapshots.
-- Automatic output names include the SDF mode, rays, cone angle, and backend.
+- Automatic output names use compact parameter labels such as
+  `__sdf-h0__e-...__mn-...__mx-...__r25__a120__i5__q3__p1__f0__b-custom`.
+  Numeric values retain the existing 10-significant-digit formatter; enabling
+  feature preservation adds its angle. This shortens the result directory too,
+  since field files and remesh snapshots live below it.
 
 With field prefix `result/field`, initial diagnostics are:
 

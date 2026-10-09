@@ -52,10 +52,18 @@ endif()
 
 # Default automatic epsilon, parameterized output names, and field-only mode.
 execute_process(COMMAND "${EXE}" "${input}" --field cgal-adaptive-sdf-thickness
-    --sdf-rays 31 --sdf-cone-angle 90 --iterations 0 --no-export-field
+    --sdf-rays 31 --sdf-cone-angle 90 --iterations 1 --no-export-field
+    --remesh-backend custom --remesh-diagnostics
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)
-if(NOT "${result}" STREQUAL "0" OR NOT stdout MATCHES "__sdf-rays-31__sdf-cone-90")
+if(NOT "${result}" STREQUAL "0" OR
+   NOT stdout MATCHES "__sdf-h0__e-[^,]+__mn-0p001__mx-0p5__r31__a90__i1__q3__p1__f0__b-custom")
     message(FATAL_ERROR "SDF automatic epsilon/naming failed: ${stdout}\n${stderr}")
+endif()
+string(REGEX MATCH "Remesh diagnostics: ([^\r\n]+)" match "${stdout}")
+set(auto_run "${CMAKE_MATCH_1}")
+file(TO_CMAKE_PATH "${auto_run}" auto_run)
+if(auto_run STREQUAL "" OR NOT EXISTS "${auto_run}/iter_001/result.off")
+    message(FATAL_ERROR "Compact automatic path did not hold diagnostics: ${stdout}\n${stderr}")
 endif()
 
 function(expect_failure pattern)
