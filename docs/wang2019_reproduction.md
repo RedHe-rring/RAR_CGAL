@@ -27,20 +27,20 @@ Still missing for a paper-level reproduction:
 
 Use the existing project's CMake/vcpkg setup. Build **only** the standalone target; unlike the existing RAR+Chen executable this target does not need IPOPT at compile/link time:
 
-\`\`\`powershell
+```powershell
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=E:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -DRAR_ENABLE_IPOPT=OFF
 cmake --build build --config Release --target wang2019_remesh wang2019_smoke_test
 ctest --test-dir build -C Release -R wang2019_smoke_test --output-on-failure
-\`\`\`
+```
 
 ## Run as a CGAL/RAR postprocessor
 
-\`\`\`powershell
+```powershell
 .\build\Release\rar_cgal.exe .\data\plate2.ply .\data\plate2_cgal.ply --field cgal-adaptive --epsilon 0.001 --iterations 5
 .\build\Release\wang2019_remesh.exe .\data\plate2_cgal.ply .\data\plate2_wang_proto.ply --min-angle 30 --max-angle 90 --rounds 10 --budget 0.02 --smooth 3
-\`\`\`
+```
 
-Or directly provide a triangulated PLY/OBJ mesh. Run \`wang2019_remesh --help\` for options. This program **does not** invoke standard CGAL \`isotropic_remeshing()\` internally; it uses CGAL's Euler split/collapse/flip building blocks instead.
+Or directly provide a triangulated PLY/OBJ mesh. Run `wang2019_remesh --help` for options. This program **does not** invoke standard CGAL `isotropic_remeshing()` internally; it uses CGAL's Euler split/collapse/flip building blocks instead.
 
 ## Evaluation and interpretation
 
@@ -51,4 +51,4 @@ Compare **the same initial mesh** before/after postprocessing:
 
 The operation budget bounds how many splits/collapses are *attempted successfully* per pass and is **not** a target vertex count. The initial input mesh is the projection reference. A remeshed input yields projection to that remeshed surface, not to its own earlier ground-truth geometry.
 
-Implementation location: \`include/rar/Wang2019Remesher.h\`, standalone CLI \`src/wang2019_main.cpp\`. No edits to existing RAR/Chen algorithm code.
+Implementation location: `include/rar/Wang2019Remesher.h`, standalone CLI `src/wang2019_main.cpp`. No edits to existing RAR/Chen algorithm code.
