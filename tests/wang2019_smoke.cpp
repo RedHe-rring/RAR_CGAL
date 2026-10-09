@@ -1,6 +1,8 @@
 #include "rar/Wang2019Remesher.h"
 #include <CGAL/boost/graph/helpers.h>
 #include <cmath>
+#include <array>
+#include <vector>
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
@@ -87,6 +89,62 @@ int main() {
         for (std::size_t i=0; i<reasons.rejected.size(); ++i)
             std::cout << " " << cause_name(i) << "=" << reasons.rejected[i];
         std::cout << '\n';
+    }
+    // An interior obtuse patch must exercise the actual angle-driven insertion
+    // policy. Unlike the tetrahedron, its interior vertices have legal
+    // alternative local connectivities.
+    {
+        Mesh grid;
+        std::array<std::array<Vertex, 5>, 5> vv;
+        for (int y=0;y<5;++y)
+            for (int x=0;x<5;++x) {
+                const double px=(x==2 && y==2) ? 2.65 : static_cast<double>(x);
+                const double py=(x==2 && y==2) ? 2.10 : static_cast<double>(y);
+                vv[y][x]=grid.add_vertex(Point(px,py,0));
+            }
+        for (int y=0;y<4;++y)
+            for (int x=0;x<4;++x) {
+                const Vertex a=vv[y][x], b=vv[y][x+1],
+                             c=vv[y+1][x+1], d=vv[y+1][x];
+                if (grid.add_face(a,b,c)==Mesh::null_face() ||
+                    grid.add_face(a,c,d)==Mesh::null_face())
+                    throw std::runtime_error("Failed to generate planar grid");
+            }
+        if (!grid.is_valid() || !CGAL::is_triangle_mesh(grid))
+            throw std::runtime_error("Invalid planar insertion test grid");
+        Tree reference(faces(grid).first,faces(grid).second,grid);
+        reference.accelerate_distance_queries();
+        Options trial;
+        trial.min_angle=30.0;
+        trial.max_angle=90.0;
+        trial.protect_features=false;
+        trial.project=false;
+        RejectionStats rejected;
+        bool inserted=false;
+        std::size_t angle_flips=0;
+        const auto n0=grid.number_of_vertices();
+        const auto f0=grid.number_of_faces();
+        std::vector<Face> bad;
+        for (const Face f : faces(grid))
+            if (angles_of(grid,f).max>trial.max_angle) bad.push_back(f);
+        for (const Face f : bad) {
+            if (insert_at_large_angle(grid,f,reference,trial,{},
+                                      &rejected,&angle_flips)) {
+                inserted=true;
+                break;
+            }
+        }
+        if (!inserted) {
+            std::ostringstream os;
+            os << "All planar-grid insertion candidates rejected:";
+            for (std::size_t i=0;i<rejected.rejected.size();++i)
+                os << ' ' << cause_name(i) << '=' << rejected.rejected[i];
+            throw std::runtime_error(os.str());
+        }
+        if (!grid.is_valid() || !CGAL::is_triangle_mesh(grid) ||
+            grid.number_of_vertices()!=n0+1 ||
+            grid.number_of_faces()!=f0+2)
+            throw std::runtime_error("Angle-driven planar insertion corrupted topology");
     }
     Options o;
     o.rounds = 3;
