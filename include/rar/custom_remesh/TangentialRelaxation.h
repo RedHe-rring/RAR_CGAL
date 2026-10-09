@@ -24,6 +24,8 @@
 #include <CGAL/Named_function_parameters.h>
 #include <CGAL/boost/graph/named_params_helper.h>
 
+#include "rar/custom_remesh/RemeshObserver.h"
+
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -137,7 +139,8 @@ template <typename VertexRange,
           typename CGAL_NP_TEMPLATE_PARAMETERS>
 void tangential_relaxation(const VertexRange& vertices,
                            TriangleMesh& tm,
-                           const CGAL_NP_CLASS& np = parameters::default_values())
+                           const CGAL_NP_CLASS& np = parameters::default_values(),
+                           RemeshObserver<TriangleMesh>* observer = nullptr)
 {
   typedef typename boost::graph_traits<TriangleMesh>::vertex_descriptor vertex_descriptor;
   typedef typename boost::graph_traits<TriangleMesh>::halfedge_descriptor halfedge_descriptor;
@@ -369,6 +372,7 @@ void tangential_relaxation(const VertexRange& vertices,
       if (frac <= 0.02)
         put(vpm, vp.first, initial_pos);//cancel move
     }
+    if (observer) observer->emit(tm, "sweep", nit + 1);
   }//end for loop (nit == nb_iterations)
 
 #ifdef CGAL_PMP_TANGENTIAL_RELAXATION_VERBOSE
@@ -384,9 +388,10 @@ void tangential_relaxation(const VertexRange& vertices,
 template <class TriangleMesh,
           typename CGAL_NP_TEMPLATE_PARAMETERS>
 void tangential_relaxation(TriangleMesh& tm,
-                           const CGAL_NP_CLASS& np = parameters::default_values())
+                           const CGAL_NP_CLASS& np = parameters::default_values(),
+                           RemeshObserver<TriangleMesh>* observer = nullptr)
 {
-  ::rar::custom_remesh::tangential_relaxation(vertices(tm), tm, np);
+  ::rar::custom_remesh::tangential_relaxation(vertices(tm), tm, np, observer);
 }
 
 } } // rar::custom_remesh

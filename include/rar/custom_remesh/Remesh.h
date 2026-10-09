@@ -221,8 +221,14 @@ template<typename PolygonMesh
 void isotropic_remeshing(const FaceRange& faces
                        , SizingFunction& sizing
                        , PolygonMesh& pmesh
-                       , const NamedParameters& np = parameters::default_values())
+                       , const NamedParameters& np = parameters::default_values()
+                       , RemeshObserver<PolygonMesh>* observer = nullptr)
 {
+  if (observer) {
+    observer->iteration = 0;
+    observer->begin_stage("input");
+    observer->emit(pmesh, "input");
+  }
   if (std::begin(faces)==std::end(faces))
     return;
 
@@ -309,7 +315,7 @@ void isotropic_remeshing(const FaceRange& faces
 #endif
 
   typename internal::Incremental_remesher<PM, VPMap, GT, ECMap, VCMap, FPMap, FIMap>
-    remesher(pmesh, vpmap, gt, protect, ecmap, vcmap, fpmap, fimap, need_aabb_tree);
+    remesher(pmesh, vpmap, gt, protect, ecmap, vcmap, fpmap, fimap, need_aabb_tree, observer);
   remesher.init_remeshing(faces);
 
 #ifdef CGAL_PMP_REMESHING_VERBOSE
@@ -337,15 +343,25 @@ void isotropic_remeshing(const FaceRange& faces
     std::cout << " * Iteration " << (i + 1) << " *" << std::endl;
 #endif
 
-    if(do_split)
-     remesher.split_long_edges(sizing);
-    if(do_collapse)
-     remesher.collapse_short_edges(sizing, collapse_constraints);
-    if(do_flip)
-      remesher.flip_edges_for_valence_and_shape();
-    remesher.tangential_relaxation_impl(smoothing_1d, nb_laplacian, sizing, shall_move);
-    if ( choose_parameter(get_parameter(np, internal_np::do_project), true) )
+    if (observer) observer->iteration = i + 1;
+    auto stage = [&](const char* name, bool enabled, auto operation) {
+      if (observer) observer->begin_stage(name);
+      if (enabled) operation();
+      if (observer) observer->emit(pmesh, enabled ? "stage" : "skipped");
+    };
+    stage("split", do_split, [&] { remesher.split_long_edges(sizing); });
+    stage("collapse", do_collapse, [&] { remesher.collapse_short_edges(sizing, collapse_constraints); });
+    stage("flip", do_flip, [&] { remesher.flip_edges_for_valence_and_shape(); });
+    stage("relax", nb_laplacian > 0, [&] {
+      remesher.tangential_relaxation_impl(smoothing_1d, nb_laplacian, sizing, shall_move);
+    });
+    stage("project", choose_parameter(get_parameter(np, internal_np::do_project), true), [&] {
       remesher.project_to_surface(get_parameter(np, internal_np::projection_functor));
+    });
+    if (observer) {
+      observer->begin_stage("iteration");
+      observer->emit(pmesh, "iteration");
+    }
 #ifdef CGAL_PMP_REMESHING_VERBOSE
     std::cout << std::endl;
 #endif
@@ -370,7 +386,8 @@ template<typename PolygonMesh
 void isotropic_remeshing(const FaceRange& faces
                        , const SizingValue target_edge_length
                        , PolygonMesh& pmesh
-                       , const NamedParameters& np = parameters::default_values())
+                       , const NamedParameters& np = parameters::default_values()
+                       , RemeshObserver<PolygonMesh>* observer = nullptr)
 {
   using parameters::choose_parameter;
   using parameters::get_parameter;
@@ -381,9 +398,9 @@ void isotropic_remeshing(const FaceRange& faces
 
   Uniform_sizing_field<PolygonMesh, VPMap> sizing(target_edge_length, vpmap);
   if (target_edge_length > 0)
-    ::rar::custom_remesh::isotropic_remeshing(faces, sizing, pmesh, np);
+    ::rar::custom_remesh::isotropic_remeshing(faces, sizing, pmesh, np, observer);
   else
-    ::rar::custom_remesh::isotropic_remeshing(faces, sizing, pmesh, np.do_split(false).do_collapse(false));
+    ::rar::custom_remesh::isotropic_remeshing(faces, sizing, pmesh, np.do_split(false).do_collapse(false), observer);
 }
 
 /*!

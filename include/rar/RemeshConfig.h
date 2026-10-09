@@ -5,6 +5,7 @@
 namespace rar {
 
 enum class RemeshBackend { CGAL, Custom };
+enum class DiagnosticLevel { Stage, Operation };
 
 inline const char* remesh_backend_name(const RemeshBackend backend)
 {
@@ -70,6 +71,8 @@ struct RemeshConfig {
     unsigned int iterations = 5;
     unsigned int relaxation_steps = 3;
     bool do_project = true;
+    bool remesh_diagnostics = false;
+    DiagnosticLevel diagnostic_level = DiagnosticLevel::Stage;
 
     // Sharp-feature detection and preservation. CGAL still treats mesh
     // boundary edges as constrained independently of this setting.

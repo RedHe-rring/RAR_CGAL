@@ -312,7 +312,8 @@ namespace internal {
                        , VertexIsConstrainedMap vcmap
                        , FacePatchMap fpmap
                        , FaceIndexMap fimap
-                       , const bool build_tree = true)//built by the remesher
+                       , const bool build_tree = true//built by the remesher
+                       , RemeshObserver<PM>* observer = nullptr)
       : mesh_(pmesh)
       , vpmap_(vpmap)
       , gt_(gt)
@@ -325,6 +326,7 @@ namespace internal {
       , ecmap_(ecmap)
       , vcmap_(vcmap)
       , fimap_(fimap)
+      , observer_(observer)
     {
       halfedge_status_pmap_ = get(CGAL::dynamic_halfedge_property_t<Halfedge_status>(),
                                   pmesh);
@@ -520,6 +522,10 @@ namespace internal {
         auto eit = long_edges.begin();
         halfedge_descriptor he = eit->first;
         long_edges.erase(eit);
+        if (observer_) ++observer_->attempted;
+        const auto diagnostic_edge = edge(he, mesh_);
+        const auto diagnostic_source = source(he, mesh_);
+        const auto diagnostic_target = target(he, mesh_);
 
 #ifdef CGAL_PMP_REMESHING_VERBOSE_PROGRESS
         std::cout << "\r\t(" << long_edges.size() << " long edges, ";
@@ -613,6 +619,9 @@ namespace internal {
               long_edges.emplace(hnew2, sql.value());
           }
         }
+        if (observer_) observer_->operation(mesh_, diagnostic_edge,
+            {diagnostic_source, diagnostic_target},
+            observer_->operations ? observer_->describe(vnew) : std::string());
       }
 #ifdef CGAL_PMP_REMESHING_VERBOSE
       std::cout << " done ("<< nb_splits << " splits)." << std::endl;
@@ -671,6 +680,7 @@ namespace internal {
         typename Boost_bimap::right_map::iterator eit = short_edges.right.begin();
         halfedge_descriptor he = eit->second;
         short_edges.right.erase(eit);
+        if (observer_) ++observer_->attempted;
 
 #ifdef CGAL_PMP_REMESHING_VERBOSE_PROGRESS
         std::cout << "\r\t(" << short_edges.left.size() << " short edges, ";
@@ -824,6 +834,8 @@ namespace internal {
                 short_edges.insert(short_edge(ht, sqlen.value()));
             }
           }
+          // Include all associated degeneracy repairs in this transaction.
+          if (observer_) observer_->operation(mesh_, e, {va, vb});
         }//end if(collapse_ok)
       }
 
@@ -872,6 +884,7 @@ namespace internal {
 #endif
       for(edge_descriptor e : edges(mesh_))
       {
+        if (observer_) ++observer_->attempted;
         //only the patch edges are allowed to be flipped
         if (!is_flip_allowed(e))
           continue;
@@ -950,6 +963,7 @@ namespace internal {
              (vc == target(he, mesh_) && vd == source(he, mesh_))
           || (vd == target(he, mesh_) && vc == source(he, mesh_)));
 
+        bool diagnostic_accepted = true;
         int deviation_post;
         if(!badly_shaped)
         {
@@ -970,6 +984,7 @@ namespace internal {
           || !check_normals(target(he, mesh_))
           || !check_normals(source(he, mesh_)))
         {
+          diagnostic_accepted = false;
           CGAL_assertion( is_flip_topologically_allowed(edge(he, mesh_)) );
           CGAL_assertion( !get(ecmap_, edge(he, mesh_)) );
           CGAL::Euler::flip_edge(he, mesh_);
@@ -998,6 +1013,7 @@ namespace internal {
         Patch_id pid = get_patch_id(face(he, mesh_));
         set_patch_id(face(he, mesh_), pid);
         set_patch_id(face(opposite(he, mesh_), mesh_), pid);
+        if (observer_ && diagnostic_accepted) observer_->operation(mesh_, e, {va, vb, vc, vd});
       }
 
 #ifdef CGAL_PMP_REMESHING_VERBOSE
@@ -1061,7 +1077,8 @@ namespace internal {
             .edge_is_constrained_map(constrained_edges_pmap)
             .vertex_is_constrained_map(constrained_vertices_pmap)
             .relax_constraints(relax_constraints)
-            .allow_move_functor(shall_move)
+            .allow_move_functor(shall_move),
+          observer_
         );
       }
       else
@@ -1080,7 +1097,8 @@ namespace internal {
             .vertex_is_constrained_map(constrained_vertices_pmap)
             .relax_constraints(relax_constraints)
             .sizing_function(sizing)
-            .allow_move_functor(shall_move)
+            .allow_move_functor(shall_move),
+          observer_
         );
       }
 
@@ -2072,6 +2090,7 @@ private:
     EdgeIsConstrainedMap ecmap_;
     VertexIsConstrainedMap vcmap_;
     FaceIndexMap fimap_;
+    RemeshObserver<PM>* observer_;
     CGAL_assertion_code(bool input_mesh_is_valid_;)
 
   };//end class Incremental_remesher

@@ -65,7 +65,7 @@ inline RARFieldStats run_rar_like_field_cgal_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
-        cfg.remesh_backend,
+        cfg,
         CGAL::parameters::number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(cfg.relaxation_steps)
             .edge_is_constrained_map(

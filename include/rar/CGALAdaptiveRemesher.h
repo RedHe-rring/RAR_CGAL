@@ -168,7 +168,7 @@ inline void run_cgal_adaptive_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
-        cfg.remesh_backend,
+        cfg,
         CGAL::parameters::
             number_of_iterations(
                 cfg.iterations)
@@ -275,7 +275,7 @@ inline void run_cgal_adaptive_radius_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
-        cfg.remesh_backend,
+        cfg,
         CGAL::parameters::
             number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(cfg.relaxation_steps)
@@ -400,7 +400,7 @@ run_cgal_adaptive_chen_from_maps(
         faces(mesh),
         sizing_field,
         mesh,
-        cfg.remesh_backend,
+        cfg,
         CGAL::parameters::
             number_of_iterations(
                 cfg.iterations)

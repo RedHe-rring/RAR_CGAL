@@ -49,7 +49,7 @@ inline CSFFieldStats run_csf_field_cgal_remeshing(
         faces(mesh),
         sizing_field,
         mesh,
-        cfg.remesh_backend,
+        cfg,
         CGAL::parameters::
             number_of_iterations(cfg.iterations)
             .number_of_relaxation_steps(

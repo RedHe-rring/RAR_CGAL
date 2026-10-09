@@ -50,6 +50,97 @@ From the `RAR_CGAL_custom_remesh` worktree:
 output paths and `--export-field` prefixes remain exactly what the caller asks
 for, so choose different paths when running a comparison.
 
+## Remeshing snapshots
+
+The behavior-preserving fork is committed as `939f90e`, with the annotated local
+tag `custom-remesh-cgal-parity-baseline`. Optional observation hooks were added
+after that checkpoint; they do not change the remeshing decisions.
+
+```powershell
+.\build\Release\rar_cgal.exe input.off result.off --field rar --remesh-backend custom --remesh-diagnostics
+.\build\Release\rar_cgal.exe input.off result.off --field rar --remesh-backend custom --remesh-diagnostics --diagnostic-level operation
+```
+
+`--remesh-diagnostics` enables output; `--diagnostic-level stage|operation`
+selects the granularity, defaulting to `stage`. The level alone does not enable
+output. Diagnostics require `--remesh-backend custom`; the installed CGAL backend
+rejects this option instead of silently switching implementations.
+
+All snapshots are complete meshes in ASCII OFF with 17-digit coordinates.
+They sit beside the field artifacts, without a new output root:
+
+```text
+result.off
+result/
+  field.ply
+  field.csv
+  remesh_diagnostics/
+    run_0001/
+      manifest.json
+      events.jsonl
+      status.json
+      input.off
+      iter_001/
+        01_split.off
+        02_collapse.off
+        03_flip.off
+        04_relax_001.off
+        04_relax_002.off
+        04_relax_003.off
+        04_relax.off
+        05_project.off
+        result.off
+      iter_002/...
+```
+
+With `--export-field some/folder/field`, the diagnostics root is
+`some/folder/remesh_diagnostics/`. With `--no-export-field`, snapshots still use
+that explicit prefix's parent, or the normal output-mesh stem directory if no
+prefix was provided. Each run exclusively creates the next `run_NNNN` directory;
+earlier runs are preserved. The actual path is printed to the console.
+
+`stage` records the input at entry to remeshing (after any input triangulation
+and field preparation), each completed split/collapse/flip/relax/project stage,
+each complete relaxation sweep, and every completed remeshing iteration.
+Disabled stages have a `skipped` event and no redundant snapshot. Zero remeshing
+iterations produce only the input snapshot. Zero relaxation steps produce no
+sweep or relaxation-stage snapshot.
+
+`operation` additionally writes `iter_NNN/split/op_NNNNNN.off`, and equivalent
+`collapse/` and `flip/` files after each accepted operation. Split snapshots are
+written after retriangulation, constraint/sizing updates and queue maintenance.
+A collapse snapshot includes its associated degeneracy repairs; intermediate
+repair operations are not exposed as separate transactions. Reverted flips
+are counted as rejected and do not create snapshots. Relaxation stays at full
+sweep granularity, not individual vertex moves.
+
+The optional `RemeshObserver` is passed explicitly through the local driver,
+remesher and relaxation functions. It has no global state. The writer copies the
+live mesh and compacts only the copy, preserving the live descriptors and queues.
+Writing errors propagate to the CLI. `status.json` remains `incomplete` unless
+all remeshing snapshots and event records have been written successfully;
+`complete` refers to the remeshing diagnostics, not a later final mesh export.
+
+`events.jsonl` records chronological event numbers, round/stage/operation numbers,
+mesh counts, paths, acceptance counters and operation descriptors. `attempted`
+counts candidates popped from the split/collapse queues, or edges visited by
+the flip loop; `rejected = attempted - accepted`. Initial queue filtering is not
+part of that count. IDs describe the live mesh at that event, not the compact
+OFF vertex indices and not persistent identities across later operations.
+
+`manifest.json` records the input file SHA-1, effective sizing/remeshing parameters,
+paths, compiler/configuration, CGAL version, and the source commit/worktree-dirty
+state captured at build time. Build metadata is refreshed on every CMake build;
+untracked files also count as a dirty worktree. In-memory library calls with no
+input file record a null checksum. These traces aid debugging; formal comparison
+experiments still follow `notes/versioning_and_experiment_workflow.md`.
+
+The operation level writes a complete mesh for every accepted edge operation,
+so use the stage level for routine inspection and operation level for small
+reproductions. Diagnostics are off by default.
+
+## Validation
+
 ```powershell
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
@@ -67,6 +158,13 @@ checks remain active in Release builds.
 for all non-Chen fields, and all Chen fields when IPOPT is available. It also
 checks default selection, automatic naming and invalid/missing backend values.
 Generated test meshes stay in the worktree's ignored build directory.
+
+`rar_remesh_diagnostics_test` additionally compares diagnostics on/off for closed,
+open and feature-constrained meshes at both levels, checks disabled stages, reads
+every emitted snapshot and verifies topology/counts, verifies all three accepted
+edge-operation kinds, repeat-run isolation and write-error propagation. CLI tests
+also verify field-directory placement, input checksums, unchanged final output
+and diagnostic-option validation.
 
 After deliberately changing an operator, baseline parity may fail as expected.
 Replace the relevant equality expectation with a documented experiment and

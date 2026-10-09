@@ -33,6 +33,8 @@ void print_usage(const char* exe) {
         << "Options:\n"
         << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
         << "  --remesh-backend <name> cgal | custom (default: cgal)\n"
+        << "  --remesh-diagnostics    Save snapshots beside field files (custom backend)\n"
+        << "  --diagnostic-level <name> stage | operation (default: stage)\n"
         << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
@@ -159,6 +161,13 @@ rar::RemeshConfig parse_args(
                     "Unknown remesh backend '" + value +
                     "'. Expected cgal or custom.");
             }
+        } else if (arg == "--remesh-diagnostics") {
+            cfg.remesh_diagnostics = true;
+        } else if (arg == "--diagnostic-level") {
+            const std::string value = require_value(arg);
+            if (value == "stage") cfg.diagnostic_level = rar::DiagnosticLevel::Stage;
+            else if (value == "operation") cfg.diagnostic_level = rar::DiagnosticLevel::Operation;
+            else throw std::invalid_argument("Unknown diagnostic level '" + value + "'. Expected stage or operation.");
         } else if (arg == "--epsilon") {
             cfg.epsilon =
                 std::stod(require_value(arg));
@@ -214,6 +223,8 @@ rar::RemeshConfig parse_args(
         }
     }
 
+    if (cfg.remesh_diagnostics && cfg.remesh_backend != rar::RemeshBackend::Custom)
+        throw std::invalid_argument("Remesh diagnostics require --remesh-backend custom");
     return cfg;
 }
 
@@ -464,6 +475,11 @@ void print_config(
             << cfg.export_field_prefix;
     }
 
+    if (cfg.remesh_diagnostics) {
+        std::cout << ", remesh_diagnostics=" << rar::remesh_diagnostics_root(cfg).string()
+                  << ", diagnostic_level="
+                  << (cfg.diagnostic_level == rar::DiagnosticLevel::Operation ? "operation" : "stage");
+    }
     std::cout << '\n';
 }
 

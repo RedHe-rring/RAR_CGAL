@@ -1,0 +1,7 @@
+#pragma once
+namespace rar { namespace build_info {
+inline constexpr const char* commit = "@source_commit@";
+inline constexpr const char* dirty_json = "@dirty_json@";
+inline constexpr const char* compiler = "@COMPILER@";
+inline constexpr const char* configuration = "@CONFIGURATION@";
+} }

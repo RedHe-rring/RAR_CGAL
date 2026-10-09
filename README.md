@@ -11,6 +11,14 @@ Automatic output filenames include the backend; explicitly supplied output paths
 remain caller-controlled. See [the local operator guide](include/rar/custom_remesh/README.md)
 for editing locations, provenance, usage and parity tests.
 
+To save remeshing snapshots beside the field files, add `--remesh-diagnostics`
+with the `custom` backend. The default `--diagnostic-level stage` records each
+stage, relaxation sweep and iteration; `--diagnostic-level operation` also records
+each accepted edge split/collapse/flip. Runs are stored in
+`<field directory>/remesh_diagnostics/run_NNNN/`, with meshes, event logs and a
+manifest. No additional `out` directory is created. See the local operator guide
+for the layout and interpretation of diagnostics.
+
 ## Implemented modes
 
 The executable keeps several adaptive sizing modes side by side:

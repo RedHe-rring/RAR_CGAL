@@ -8,6 +8,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(CGAL REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+add_custom_target(rar_build_info
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>/rar/BuildInfo.h"
+        "-DCOMPILER=${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+        "-DCONFIGURATION=$<CONFIG>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/WriteBuildInfo.cmake"
+    VERBATIM)
+add_library(rar_remesh_diagnostics STATIC src/RemeshDiagnostics.cpp)
+add_dependencies(rar_remesh_diagnostics rar_build_info)
+target_include_directories(rar_remesh_diagnostics PUBLIC include
+    PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>")
+target_link_libraries(rar_remesh_diagnostics PUBLIC CGAL::CGAL Eigen3::Eigen)
+
 option(
     RAR_BUILD_FIELD_VIEWER
     "Build the interactive Polyscope sizing-field viewer"
@@ -27,7 +41,7 @@ add_executable(rar_cgal
 )
 
 target_include_directories(rar_cgal PRIVATE include)
-target_link_libraries(rar_cgal PRIVATE CGAL::CGAL Eigen3::Eigen)
+target_link_libraries(rar_cgal PRIVATE CGAL::CGAL Eigen3::Eigen rar_remesh_diagnostics)
 
 if(RAR_ENABLE_IPOPT)
     find_path(
@@ -88,8 +102,10 @@ if(BUILD_TESTING)
     add_test(NAME rar_chen_continuation_test COMMAND rar_chen_continuation_test)
     add_executable(rar_custom_remesh_test tests/custom_remesh.cpp)
     target_include_directories(rar_custom_remesh_test PRIVATE include)
-    target_link_libraries(rar_custom_remesh_test PRIVATE CGAL::CGAL Eigen3::Eigen)
+    target_link_libraries(rar_custom_remesh_test PRIVATE CGAL::CGAL Eigen3::Eigen rar_remesh_diagnostics)
     add_test(NAME rar_custom_remesh_test COMMAND rar_custom_remesh_test)
+    add_test(NAME rar_remesh_diagnostics_test COMMAND rar_custom_remesh_test
+        "${CMAKE_CURRENT_BINARY_DIR}/remesh-diagnostics-tests")
     add_test(NAME rar_remesh_backend_cli_test
         COMMAND ${CMAKE_COMMAND}
             "-DEXE=$<TARGET_FILE:rar_cgal>"

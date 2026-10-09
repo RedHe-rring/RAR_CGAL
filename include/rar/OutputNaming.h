@@ -162,4 +162,11 @@ inline std::string make_auto_field_prefix(
     ).string();
 }
 
+inline std::filesystem::path remesh_diagnostics_root(const RemeshConfig& cfg)
+{
+    const std::filesystem::path prefix = cfg.export_field_prefix.empty()
+        ? make_auto_field_prefix(cfg) : cfg.export_field_prefix;
+    return prefix.parent_path() / "remesh_diagnostics";
+}
+
 } // namespace rar
