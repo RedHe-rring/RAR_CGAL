@@ -46,8 +46,8 @@ using Traits = CGAL::AABB_traits<Kernel, Primitive>;
 using Tree = CGAL::AABB_tree<Traits>;
 
 struct Options {
-    double min_angle = 30.0;        // degrees, user-controllable
-    double max_angle = 90.0;        // degrees, user-controllable
+    double min_angle = 35.0;        // paper default lower angle bound (degrees)
+    double max_angle = 86.0;        // paper default upper angle bound (degrees)
     double feature_angle = 50.0;    // dihedral degrees
     unsigned rounds = 10;
     unsigned smoothing_steps = 3;
