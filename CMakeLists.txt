@@ -8,6 +8,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(CGAL REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+# Some CGAL/Eigen CMake module combinations report Eigen3 as found without
+# defining the imported target. Keep existing target_link_libraries portable.
+if(NOT TARGET Eigen3::Eigen)
+    find_path(RAR_EIGEN3_INCLUDE_DIR Eigen/Core PATH_SUFFIXES eigen3 REQUIRED)
+    add_library(Eigen3::Eigen INTERFACE IMPORTED)
+    set_target_properties(Eigen3::Eigen PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${RAR_EIGEN3_INCLUDE_DIR}")
+endif()
+
 option(
     RAR_BUILD_FIELD_VIEWER
     "Build the interactive Polyscope sizing-field viewer"
