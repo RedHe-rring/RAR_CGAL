@@ -273,7 +273,7 @@ inline bool flip_if_better(Mesh& m, Edge e, const std::set<Vertex>& fixed) {
     if (a == d || b == c || c == d ||
         is_protected(fixed, a) || is_protected(fixed, b) ||
         is_protected(fixed, c) || is_protected(fixed, d)) return false;
-    if (m.halfedge(c, d).second) return false;
+    if (m.halfedge(c, d) != Mesh::null_halfedge()) return false;
     if (m.degree(a) < 4 || m.degree(b) < 4) return false;
     const double old_energy =
         valence_cost(static_cast<unsigned>(m.degree(a)), false) +
