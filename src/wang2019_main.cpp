@@ -1,5 +1,9 @@
 #include "rar/Wang2019Remesher.h"
-#include <CGAL/IO/polygon_mesh_io.h>
+#if __has_include(<CGAL/IO/polygon_mesh_io.h>)
+#  include <CGAL/IO/polygon_mesh_io.h>
+#else
+#  include <CGAL/boost/graph/IO/polygon_mesh_io.h>
+#endif
 #include <CGAL/boost/graph/helpers.h>
 #include <filesystem>
 #include <iostream>
