@@ -17,7 +17,9 @@ void usage() {
         "  --min-angle D      small-angle threshold in degrees (default 30)\n"
         "  --max-angle D      large-angle threshold in degrees (default 90)\n"
         "  --rounds N         maximal alternating rounds (default 10)\n"
-        "  --budget F         per-pass operation budget / current V (default 0.02)\n"
+        "  --budget F         attempted operations / bad triangle count (default 0.02)\n"
+        "  --k N              override automatic number of operations per stage\n"
+        "  --allow-drift      allow vertex count changes instead of rollback\n"
         "  --smooth N         tangential smoothing sweeps (default 3)\n"
         "  --feature-angle D  sharp edge dihedral threshold (default 50)\n"
         "  --no-features      preserve boundary only; allow changes near creases\n"
@@ -46,6 +48,8 @@ int main(int argc, char** argv) {
             else if (arg == "--max-angle") opt.max_angle = std::stod(value());
             else if (arg == "--rounds") opt.rounds = static_cast<unsigned>(std::stoul(value()));
             else if (arg == "--budget") opt.budget_fraction = std::stod(value());
+            else if (arg == "--k") opt.k = static_cast<unsigned>(std::stoul(value()));
+            else if (arg == "--allow-drift") opt.strict_vertex_count = false;
             else if (arg == "--smooth") opt.smoothing_steps = static_cast<unsigned>(std::stoul(value()));
             else if (arg == "--feature-angle") opt.feature_angle = std::stod(value());
             else if (arg == "--no-project") opt.project = false;
@@ -65,6 +69,7 @@ int main(int argc, char** argv) {
         std::cout << "Wang2019 prototype: " << input << " -> " << output
                   << "\n  V: " << s.vertices_before << " -> " << s.vertices_after
                   << "  F: " << s.faces_before << " -> " << s.faces_after
+                  << "\n  rolled-back rounds: " << s.rolled_back_rounds
                   << "\n  inserts: " << s.insertions
                   << " collapses: " << s.collapses << " flips: " << s.flips
                   << "\n  min/max angle: " << s.angles.min << " / " << s.angles.max
