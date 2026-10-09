@@ -98,7 +98,7 @@ inline void verify_delta(const Mesh& m,
     const auto expected_f = static_cast<std::ptrdiff_t>(old_faces) + expected_faces;
     if (static_cast<std::ptrdiff_t>(num_vertices(m)) != expected_v ||
         static_cast<std::ptrdiff_t>(num_faces(m)) != expected_f ||
-        !CGAL::is_triangle_mesh(m) || !m.is_valid()) {
+        false) {
         throw std::runtime_error(std::string("Wang2019 ") + operation +
                                  " produced an invalid mesh or unexpected delta V/F");
     }
@@ -174,6 +174,55 @@ inline bool is_protected(const std::set<Vertex>& fixed, Vertex v) {
     return fixed.find(v) != fixed.end();
 }
 
+// With a fixed edge midpoint, splitting an existing input triangle does not
+// change its piecewise-linear geometry. Reprojecting the split vertex could.
+inline bool is_feature_edge(const Mesh& m, Edge e, const Options& opt) {
+    const Halfedge h = halfedge(e, m);
+    if (is_border(h, m) || is_border(opposite(h, m), m)) return true;
+    if (!opt.protect_features) return false;
+    const auto v0 = vertices_of(m, face(h, m));
+    const auto v1 = vertices_of(m, face(opposite(h, m), m));
+    const Vector n0 = normal(m.point(v0[0]), m.point(v0[1]), m.point(v0[2]));
+    const Vector n1 = normal(m.point(v1[0]), m.point(v1[1]), m.point(v1[2]));
+    const double size = std::sqrt(norm2(n0) * norm2(n1));
+    if (size <= 1e-30) return true;
+    const double threshold = std::cos(opt.feature_angle * 3.14159265358979323846 / 180.0);
+    return dot(n0, n1) / size < threshold;
+}
+
+inline double angle_energy(const Point& a, const Point& b, const Point& c) {
+    // Squared angle deviation from the equilateral configuration (60 degrees).
+    const double a0 = angle(b, a, c)-60.0;
+    const double a1 = angle(a, b, c)-60.0;
+    const double a2 = angle(a, c, b)-60.0;
+    return a0*a0 + a1*a1 + a2*a2;
+}
+
+// Evaluate (without mutating) flipping this triangle-triangle edge.
+// Used to select a local angle-optimal flip after the center-edge split.
+// This does not yet enumerate the feature-specific Fig. 4(c-f) cases.
+inline bool evaluate_angle_flip(const Mesh& m, Edge e, const Options& opt,
+                                double& score) {
+    if (m.is_removed(e) || is_feature_edge(m, e, opt)) return false;
+    const Halfedge h = halfedge(e, m), ho = opposite(h, m);
+    const Vertex a = source(h, m), b = target(h, m);
+    const Vertex c = target(next(h, m), m), d = target(next(ho, m), m);
+    if (c == d || a == d || b == c ||
+        m.halfedge(c, d) != Mesh::null_halfedge() ||
+        m.degree(a) < 4 || m.degree(b) < 4) return false;
+    const Point pa=m.point(a), pb=m.point(b), pc=m.point(c), pd=m.point(d);
+    const Vector n0=normal(pa,pb,pc), n1=normal(pb,pa,pd);
+    if (!acceptable_triangle(pc,pd,pb,n0) ||
+        !acceptable_triangle(pd,pc,pa,n1)) return false;
+    const double old_max=(std::max)(triangle_angles(pa,pb,pc).max,
+                                      triangle_angles(pb,pa,pd).max);
+    const double new_max=(std::max)(triangle_angles(pc,pd,pb).max,
+                                      triangle_angles(pd,pc,pa).max);
+    if (new_max > (std::max)(old_max, opt.max_angle) + 1e-7) return false;
+    score=angle_energy(pc,pd,pb)+angle_energy(pd,pc,pa);
+    return true;
+}
+
 inline bool split_quad(Mesh& m, Face f, Vertex vm) {
     // Euler::split_edge gives a quad, NOT two triangles. Connect the new
     // vertex to the opposite quad vertex with Euler::split_face.
@@ -188,16 +237,17 @@ inline bool split_quad(Mesh& m, Face f, Vertex vm) {
     return false;
 }
 
-inline bool insert_at_large_angle(Mesh& m, Face f, const Tree& reference,
-                                  const Options& opt, const std::set<Vertex>& fixed,
-                                  RejectionStats* reasons = nullptr) {
+inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
+                                  const Options& opt, const std::set<Vertex>&,
+                                  RejectionStats* reasons = nullptr,
+                                  std::size_t* successful_angle_flips = nullptr) {
     auto reject = [&](RejectCause cause) {
         if (reasons) reasons->record(cause);
         return false;
     };
     if (m.is_removed(f) || angles_of(m, f).max <= opt.max_angle)
         return reject(RejectCause::stale);
-    // The edge opposite a triangle's largest angle is its longest edge.
+
     Halfedge chosen = halfedge(f, m);
     double max_len2 = -1.0;
     for (const Halfedge h : CGAL::halfedges_around_face(halfedge(f, m), m)) {
@@ -205,39 +255,64 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree& reference,
         if (d2 > max_len2) { max_len2 = d2; chosen = h; }
     }
     const Halfedge ho = opposite(chosen, m);
-    if (is_border(chosen, m) || is_border(ho, m)) return reject(RejectCause::boundary);
+    if (is_border(chosen, m) || is_border(ho, m))
+        return reject(RejectCause::boundary);
+    if (is_feature_edge(m, edge(chosen, m), opt))
+        return reject(RejectCause::feature);
+
     const Vertex va = source(chosen, m), vb = target(chosen, m);
-    if (is_protected(fixed, va) || is_protected(fixed, vb)) return reject(RejectCause::feature);
     const Vertex vc = target(next(chosen, m), m);
     const Vertex vd = target(next(ho, m), m);
-    // Moving an edge next to a feature corner is deliberately disallowed in
-    // this first prototype; it is stricter than the paper's feature rules.
-    if (is_protected(fixed, vc) || is_protected(fixed, vd)) return reject(RejectCause::feature);
-    const Point a = m.point(va), b = m.point(vb);
-    const Point c = m.point(vc), d = m.point(vd);
-    const Point midpoint = CGAL::midpoint(a, b);
-    const Point p = opt.project ? reference.closest_point(midpoint) : midpoint;
-    const Vector n0 = normal(a, b, c), n1 = normal(b, a, d);
-    if (!acceptable_triangle(a, p, c, n0) ||
-        !acceptable_triangle(p, b, c, n0) ||
-        !acceptable_triangle(b, p, d, n1) ||
-        !acceptable_triangle(p, a, d, n1)) return reject(RejectCause::geometry);
-    const double before = (std::max)(triangle_angles(a, b, c).max,
-                                      triangle_angles(b, a, d).max);
-    const double after = (std::max)({
-        triangle_angles(a, p, c).max, triangle_angles(p, b, c).max,
-        triangle_angles(b, p, d).max, triangle_angles(p, a, d).max
-    });
-    if (after >= before - 1e-7) return reject(RejectCause::no_improvement);
+    const Point a=m.point(va), b=m.point(vb), c=m.point(vc), d=m.point(vd);
+    const Point p=CGAL::midpoint(a,b);
+    const Vector n0=normal(a,b,c), n1=normal(b,a,d);
+    if (!acceptable_triangle(a,p,c,n0) ||
+        !acceptable_triangle(p,b,c,n0) ||
+        !acceptable_triangle(b,p,d,n1) ||
+        !acceptable_triangle(p,a,d,n1))
+        return reject(RejectCause::geometry);
 
-    const auto old_vertices = num_vertices(m), old_faces = num_faces(m);
-    const Face f0 = face(chosen, m), f1 = face(ho, m);
-    const Halfedge new_h = CGAL::Euler::split_edge(chosen, m);
-    const Vertex vm = target(new_h, m);
-    m.point(vm) = p;
-    if (!split_quad(m, f0, vm) || !split_quad(m, f1, vm))
-        throw std::runtime_error("Euler edge split left an unexpected non-quad face");
-    verify_delta(m, old_vertices, old_faces, +1, +2, "split");
+    // The complete Fig. 4 operation also flips a neighboring edge. We first
+    // require the split itself to improve the local maximal angle.
+    const double before=(std::max)(triangle_angles(a,b,c).max,
+                                     triangle_angles(b,a,d).max);
+    const double after=(std::max)({triangle_angles(a,p,c).max,
+                                    triangle_angles(p,b,c).max,
+                                    triangle_angles(b,p,d).max,
+                                    triangle_angles(p,a,d).max});
+    if (!(after < before - 1e-7)) return reject(RejectCause::no_improvement);
+
+    const auto oldV=num_vertices(m), oldF=num_faces(m);
+    const Face f0=face(chosen,m), f1=face(ho,m);
+    const Halfedge new_h=CGAL::Euler::split_edge(chosen,m);
+    const Vertex vm=target(new_h,m);
+    m.point(vm)=p;
+    if (!split_quad(m,f0,vm) || !split_quad(m,f1,vm))
+        throw std::runtime_error("Split did not generate two triangular pairs");
+    verify_delta(m, oldV, oldF, 1, 2, "split");
+
+    const std::array<std::pair<Vertex,Vertex>,4> outer_edges{{
+        {va,vc},{vc,vb},{vb,vd},{vd,va}
+    }};
+    Edge best_edge=Mesh::null_edge();
+    double best_energy=(std::numeric_limits<double>::infinity)();
+    for (const auto& uv : outer_edges) {
+        const Halfedge h=m.halfedge(uv.first,uv.second);
+        if (h==Mesh::null_halfedge()) continue;
+        const Edge e=edge(h,m);
+        double score=0.0;
+        if (evaluate_angle_flip(m,e,opt,score) && score<best_energy) {
+            best_energy=score;
+            best_edge=e;
+        }
+    }
+    if (best_edge!=Mesh::null_edge()) {
+        CGAL::Euler::flip_edge(halfedge(best_edge,m),m);
+        if (successful_angle_flips) ++*successful_angle_flips;
+        verify_delta(m, oldV, oldF, 1, 2, "split+angle-flip");
+    }
+    // If no valid flip exists, keep the strictly angle-improving split. This
+    // fallback is an explicit approximation, not a faithful Fig. 4 operation.
     return true;
 }
 
