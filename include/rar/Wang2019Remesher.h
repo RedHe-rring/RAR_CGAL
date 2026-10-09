@@ -51,7 +51,7 @@ struct Options {
     double feature_angle = 50.0;    // dihedral degrees
     unsigned rounds = 10;
     unsigned smoothing_steps = 3;
-    double budget_fraction = 0.02;  // fraction of currently bad triangles (not N)
+    double budget_fraction = 0.2;   // k as fraction of bad triangles (Sec. 5 timing setting)
     unsigned k = 0;                 // optional explicit per-stage attempt budget
     bool strict_vertex_count = true; // roll back a round if split/collapse cannot balance
     bool protect_features = true;
@@ -584,126 +584,159 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
 
     for (unsigned round=0;round<opt.rounds;++round) {
         const Statistics initial=analyze(mesh,opt);
-        if (!initial.min_angle_violations && !initial.max_angle_violations) break;
+        if (!initial.min_angle_violations && !initial.max_angle_violations)
+            break;
 
-        // A full round copy is intentionally used for correctness here. For
-        // massive meshes, a local undo log would be more memory efficient.
-        Mesh round_backup;
-        if (opt.strict_vertex_count) round_backup=mesh;
-        const auto round_vertices=mesh.number_of_vertices();
-        const auto round_faces=mesh.number_of_faces();
-        RejectionStats split_rejections, collapse_rejections;
-
-        std::vector<Face> large;
-        for (const Face f : faces(mesh))
-            if (angles_of(mesh,f).max > opt.max_angle) large.push_back(f);
-        std::sort(large.begin(),large.end(),[&](Face x, Face y) {
-            return angles_of(mesh,x).max > angles_of(mesh,y).max;
-        });
-        std::size_t k=opt.k ?
+        const std::size_t requested_k=opt.k ?
             static_cast<std::size_t>(opt.k) :
             (std::max)(std::size_t(1),
                 static_cast<std::size_t>(std::ceil(
-                  opt.budget_fraction*(std::max)(
-                    initial.min_angle_violations,initial.max_angle_violations))));
-        k=(std::min)(k,large.size());
+                    opt.budget_fraction*(std::max)(
+                        initial.min_angle_violations,initial.max_angle_violations))));
+        // A stage may attempt at most the number of present large-angle faces.
+        const std::size_t base_k=(std::min)(requested_k, initial.max_angle_violations);
+        if (base_k==0) break;
 
-        std::size_t added=0, removed=0, angle_flips=0;
-        std::set<Vertex> fixed=feature_vertices();
-        for (const Face f : large) {
-            if (added>=k) break;
-            if (insert_at_large_angle(mesh,f,reference,opt,fixed,
-                                      &split_rejections,&angle_flips))
-                ++added;
-        }
-
-        // Algorithm 1: valence optimization and smoothing happen BETWEEN
-        // the insertion and deletion stages, not only after both stages.
-        const std::size_t first_flips=valence_stage();
-        const std::size_t target_removals=opt.strict_vertex_count ? added : k;
-
-        std::vector<Face> small;
-        for (const Face f : faces(mesh)) small.push_back(f);
-        std::sort(small.begin(),small.end(),[&](Face x, Face y) {
-            return angles_of(mesh,x).min < angles_of(mesh,y).min;
-        });
-
-        // Sec. 4.2.4: use the user-provided beta_min normally. Only raise it
-        // when there are fewer than target_removals qualifying candidates.
-        // A triangle's minimum angle is at most 60 degrees.
+        // The paper aims for k insertions and k deletions without changing N.
+        // For this experimental backend, if the chosen batch cannot be
+        // balanced, reduce k and retry the SAME round. This retains useful
+        // smaller updates instead of always rolling back an entire iteration.
+        const Mesh round_start=opt.strict_vertex_count ? Mesh(mesh) : Mesh();
+        std::size_t trial_k=base_k;
+        bool committed=false;
+        std::size_t inserted=0, collapsed=0, flipped=0, used_k=0;
+        RejectionStats final_split_rejections, final_collapse_rejections;
         double effective_min_angle=opt.min_angle;
-        std::size_t below_user_bound=0;
-        for (const Face f : small)
-            if (angles_of(mesh,f).min<opt.min_angle) ++below_user_bound;
-        if (below_user_bound<target_removals && target_removals>0 &&
-            !small.empty()) {
-            const std::size_t last=(std::min)(target_removals,small.size())-1;
-            effective_min_angle=std::nextafter(
-                (std::max)(opt.min_angle,angles_of(mesh,small[last]).min),
-                (std::numeric_limits<double>::infinity)());
-        }
-        fixed=feature_vertices();
-        Options acceptance=opt;
-        acceptance.min_angle=effective_min_angle;
-        for (const Face f : small) {
-            if (removed>=target_removals) break;
-            // Do not begin processing triangles above the raised threshold.
-            if (!mesh.is_removed(f) &&
-                angles_of(mesh,f).min>=effective_min_angle) continue;
-            if (collapse_at_small_angle(mesh,f,reference,acceptance,fixed,
-                                         &collapse_rejections))
-                ++removed;
-        }
 
-        const std::size_t second_flips=valence_stage();
-        if (!mesh.is_valid() || !CGAL::is_triangle_mesh(mesh))
-            throw std::runtime_error("Wang2019: invalid mesh after iteration");
-        const auto actual_delta=static_cast<std::ptrdiff_t>(mesh.number_of_vertices())-
-                                static_cast<std::ptrdiff_t>(round_vertices);
-        if (actual_delta!=static_cast<std::ptrdiff_t>(added)-
-                           static_cast<std::ptrdiff_t>(removed) ||
-            static_cast<std::ptrdiff_t>(mesh.number_of_faces())-
-                static_cast<std::ptrdiff_t>(round_faces)!=
-                        2*(static_cast<std::ptrdiff_t>(added)-
-                           static_cast<std::ptrdiff_t>(removed)))
-            throw std::runtime_error("Wang2019: iteration V/F topology delta mismatch");
+        while (true) {
+            if (opt.strict_vertex_count)
+                mesh=round_start;
+            const std::size_t vertices_before=mesh.number_of_vertices();
+            const std::size_t faces_before=mesh.number_of_faces();
+            RejectionStats split_rejections, collapse_rejections;
+            std::size_t added=0, removed=0, angle_flips=0;
 
-        const std::size_t all_flips=first_flips+second_flips+angle_flips;
-        if (opt.strict_vertex_count && added!=removed) {
-            mesh=std::move(round_backup);
+            std::vector<Face> large;
+            for (const Face f : faces(mesh))
+                if (angles_of(mesh,f).max>opt.max_angle) large.push_back(f);
+            std::sort(large.begin(),large.end(),[&](Face x,Face y) {
+                return angles_of(mesh,x).max>angles_of(mesh,y).max;
+            });
+            std::set<Vertex> fixed=feature_vertices();
+            for (const Face f : large) {
+                if (added>=trial_k) break;
+                if (insert_at_large_angle(mesh,f,reference,opt,fixed,
+                                          &split_rejections,&angle_flips))
+                    ++added;
+            }
+            const std::size_t first_flips=valence_stage();
+
+            // Under strict N, compensate only the insertions that actually
+            // succeeded, not the requested attempts.
+            const std::size_t target_removals=opt.strict_vertex_count ?
+                                               added : trial_k;
+
+            std::vector<Face> small;
+            for (const Face f : faces(mesh)) small.push_back(f);
+            std::sort(small.begin(),small.end(),[&](Face x,Face y) {
+                return angles_of(mesh,x).min<angles_of(mesh,y).min;
+            });
+            // Sec. 4.2.4: temporary relaxation only if the candidate count
+            // below the specified beta_min is insufficient for this batch.
+            std::size_t below_user_bound=0;
+            for (const Face f : small)
+                if (angles_of(mesh,f).min<opt.min_angle) ++below_user_bound;
+            double raised_beta=opt.min_angle;
+            if (below_user_bound<target_removals && target_removals>0 &&
+                !small.empty()) {
+                const std::size_t last=(std::min)(target_removals,small.size())-1;
+                raised_beta=std::nextafter(
+                    (std::max)(opt.min_angle,angles_of(mesh,small[last]).min),
+                    (std::numeric_limits<double>::infinity)());
+            }
+            fixed=feature_vertices();
+            Options acceptance=opt;
+            acceptance.min_angle=raised_beta;
+            for (const Face f : small) {
+                if (removed>=target_removals) break;
+                if (collapse_at_small_angle(mesh,f,reference,acceptance,fixed,
+                                            &collapse_rejections))
+                    ++removed;
+            }
+            const std::size_t second_flips=valence_stage();
+            if (!mesh.is_valid() || !CGAL::is_triangle_mesh(mesh))
+                throw std::runtime_error("Wang2019: invalid mesh after iteration");
+
+            const auto actual_dv=static_cast<std::ptrdiff_t>(mesh.number_of_vertices())-
+                                 static_cast<std::ptrdiff_t>(vertices_before);
+            const auto actual_df=static_cast<std::ptrdiff_t>(mesh.number_of_faces())-
+                                 static_cast<std::ptrdiff_t>(faces_before);
+            const auto expected_dv=static_cast<std::ptrdiff_t>(added)-
+                                   static_cast<std::ptrdiff_t>(removed);
+            if (actual_dv!=expected_dv || actual_df!=2*expected_dv)
+                throw std::runtime_error("Wang2019: iteration V/F delta mismatch");
+
+            if (!opt.strict_vertex_count || added==removed) {
+                committed=true;
+                inserted=added;
+                collapsed=removed;
+                flipped=first_flips+second_flips+angle_flips;
+                used_k=trial_k;
+                effective_min_angle=raised_beta;
+                final_split_rejections=split_rejections;
+                final_collapse_rejections=collapse_rejections;
+                break;
+            }
+
             ++total.rolled_back_rounds;
             if (opt.verbose)
                 std::cout << "[Wang2019] round=" << round+1
-                          << " ROLLBACK: inserted " << added
-                          << " but only " << removed
-                          << " legal collapses; preserving target N\n";
-            // No committed update -> avoid repeating the same unsuccessful round.
+                          << " retry: k=" << trial_k
+                          << " inserted=" << added
+                          << " collapsed=" << removed << '\n';
+            if (trial_k==1) {
+                mesh=round_start;
+                final_split_rejections=split_rejections;
+                final_collapse_rejections=collapse_rejections;
+                break;
+            }
+            trial_k=(std::max)(std::size_t(1),trial_k/2);
+        }
+        if (!committed) {
+            if (opt.verbose)
+                std::cout << "[Wang2019] round=" << round+1
+                          << " stopped: no balanced operation batch\n";
             break;
         }
 
-        total.insertions+=added;
-        total.collapses+=removed;
-        total.flips+=all_flips;
+        total.insertions+=inserted;
+        total.collapses+=collapsed;
+        total.flips+=flipped;
         const Statistics current=analyze(mesh,opt);
         if (opt.verbose) {
             std::cout << "[Wang2019] round=" << round+1
-                      << " k=" << k
-                      << " insert=" << added << " collapse=" << removed
-                      << " flip=" << all_flips
+                      << " k=" << used_k
+                      << " insert=" << inserted
+                      << " collapse=" << collapsed
+                      << " flip=" << flipped
                       << " V=" << current.vertices_after
                       << " min_angle=" << current.angles.min
                       << " max_angle=" << current.angles.max
                       << " below=" << current.min_angle_violations
-                      << " above=" << current.max_angle_violations << '\n';
-            for (std::size_t i=0;i<split_rejections.rejected.size();++i)
-                if (split_rejections.rejected[i] || collapse_rejections.rejected[i])
+                      << " above=" << current.max_angle_violations;
+            if (effective_min_angle>opt.min_angle)
+                std::cout << " temporary_min_angle=" << effective_min_angle;
+            std::cout << '\n';
+            for (std::size_t i=0;i<final_split_rejections.rejected.size();++i)
+                if (final_split_rejections.rejected[i] ||
+                    final_collapse_rejections.rejected[i])
                     std::cout << "[Wang2019] rejected_" << cause_name(i)
-                              << " split=" << split_rejections.rejected[i]
-                              << " collapse=" << collapse_rejections.rejected[i] << '\n';
+                              << " split=" << final_split_rejections.rejected[i]
+                              << " collapse=" << final_collapse_rejections.rejected[i] << '\n';
         }
         if (!current.min_angle_violations && !current.max_angle_violations)
             break;
-        if (!added && !removed && !all_flips &&
+        if (!inserted && !collapsed && !flipped &&
             current.min_angle_violations>=initial.min_angle_violations &&
             current.max_angle_violations>=initial.max_angle_violations)
             break;
