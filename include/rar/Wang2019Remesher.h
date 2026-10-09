@@ -589,9 +589,10 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
                 static_cast<std::size_t>(std::ceil(
                     opt.budget_fraction*(std::max)(
                         initial.min_angle_violations,initial.max_angle_violations))));
-        // A stage may attempt at most the number of present large-angle faces.
-        const std::size_t base_k=(std::min)(requested_k, initial.max_angle_violations);
-        if (base_k==0) break;
+        // If the mesh has only small-angle violations, valence changes and
+        // smoothing still need a chance to improve it. Do not exit merely
+        // because there are no large-angle candidates.
+        const std::size_t base_k=requested_k;
 
         // The paper aims for k insertions and k deletions without changing N.
         // For this experimental backend, if the chosen batch cannot be
