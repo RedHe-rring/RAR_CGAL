@@ -15,6 +15,7 @@ inline const char* remesh_backend_name(const RemeshBackend backend)
 enum class FieldType {
     CGALAdaptive,
     CGALAdaptiveRadius,
+    CGALAdaptiveSDFThickness,
     CGALAdaptiveChen,
     CGALAdaptiveRadiusChen,
     RAR,
@@ -30,6 +31,8 @@ inline const char* field_type_name(
         return "cgal-adaptive";
     case FieldType::CGALAdaptiveRadius:
         return "cgal-adaptive-radius";
+    case FieldType::CGALAdaptiveSDFThickness:
+        return "cgal-adaptive-sdf-thickness";
     case FieldType::CGALAdaptiveChen:
         return "cgal-adaptive-chen";
     case FieldType::CGALAdaptiveRadiusChen:
@@ -59,6 +62,10 @@ struct RemeshConfig {
     bool epsilon_is_explicit = false;
     double min_edge_length = 1e-3;
     double max_edge_length = 5e-1;
+
+    // Raw CGAL Shape Diameter Function parameters (no normalization).
+    unsigned int sdf_rays = 25;
+    double sdf_cone_angle_degrees = 120.0;
 
     // Chen sizing-field gradation parameter.
     double chen_beta = 1.2;

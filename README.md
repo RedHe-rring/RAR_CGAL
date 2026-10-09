@@ -2,6 +2,11 @@
 
 A CGAL-based adaptive isotropic remeshing testbed for studying RAR-style sizing fields and local remeshing operators.
 
+This branch adds `--field cgal-adaptive-sdf-thickness`: an initial sizing field
+using raw CGAL SDF thickness to cap local epsilon, without Chen correction.
+See [the SDF field guide](docs/sdf_thickness_h0.md) for its formula, input
+requirements, diagnostics, workspace baseline, and build instructions.
+
 ## Remeshing backends
 
 All sizing modes accept `--remesh-backend cgal|custom` (default: `cgal`).

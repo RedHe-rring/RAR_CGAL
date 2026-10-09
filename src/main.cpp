@@ -5,6 +5,7 @@
 #include "rar/OutputNaming.h"
 #include "rar/RARRemesher.h"
 #include "rar/RemeshConfig.h"
+#include "rar/SDFThicknessField.h"
 #include "rar/Types.h"
 
 #include <CGAL/Polygon_mesh_processing/IO/polygon_mesh_io.h>
@@ -17,6 +18,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -31,13 +33,15 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-sdf-thickness | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
         << "  --remesh-backend <name> cgal | custom (default: cgal)\n"
         << "  --remesh-diagnostics    Save snapshots beside field files (custom backend)\n"
         << "  --diagnostic-level <name> stage | operation (default: stage)\n"
         << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
+        << "  --sdf-rays <n>          SDF rays per face (default: 25, positive integer)\n"
+        << "  --sdf-cone-angle <deg>  SDF full cone angle (default: 120, strictly between 0 and 180)\n"
         << "  --beta <value>          Chen progressive factor for *-chen modes (default: 1.2)\n"
         << "  --mesh-scale <value>    CSF global target-length scale (default: 1.0)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
@@ -51,6 +55,8 @@ void print_usage(const char* exe) {
         << "Field notes:\n"
         << "  cgal-adaptive       CGAL 6.1.x Adaptive_sizing_field.\n"
         << "  cgal-adaptive-radius  Curvature-radius-guarded CGAL-style field, without Chen correction.\n"
+        << "  cgal-adaptive-sdf-thickness  Local epsilon capped by 0.183/kappa and raw SDF/2, without Chen.\n"
+        << "                      Requires closed, oriented, non-self-intersecting input.\n"
         << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
         << "  cgal-adaptive-radius-chen  Curvature-radius-guarded CGAL field followed by Chen correction.\n"
         << "  rar                 RAR cotangent-curvature sizing field with the selected remeshing backend.\n"
@@ -69,6 +75,10 @@ rar::FieldType parse_field_type(
     if (value == "cgal-adaptive-radius" ||
         value == "cgal-radius") {
         return rar::FieldType::CGALAdaptiveRadius;
+    }
+
+    if (value == "cgal-adaptive-sdf-thickness") {
+        return rar::FieldType::CGALAdaptiveSDFThickness;
     }
 
     if (value == "cgal-adaptive-chen" ||
@@ -95,7 +105,7 @@ rar::FieldType parse_field_type(
 
     throw std::invalid_argument(
         "Unknown field '" + value +
-        "'. Expected cgal-adaptive, cgal-adaptive-radius, cgal-adaptive-chen, "
+        "'. Expected cgal-adaptive, cgal-adaptive-radius, cgal-adaptive-sdf-thickness, cgal-adaptive-chen, "
         "cgal-adaptive-radius-chen, rar, rar-chen, or csf.");
 }
 
@@ -119,6 +129,7 @@ rar::RemeshConfig parse_args(
 
     rar::RemeshConfig cfg;
     cfg.input_path = argv[1];
+    bool sdf_option_given = false;
 
     int option_start = 2;
 
@@ -178,6 +189,22 @@ rar::RemeshConfig parse_args(
         } else if (arg == "--max-edge") {
             cfg.max_edge_length =
                 std::stod(require_value(arg));
+        } else if (arg == "--sdf-rays") {
+            const auto value = require_value(arg);
+            if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos)
+                throw std::invalid_argument("sdf-rays must be a positive integer");
+            const auto rays = std::stoull(value);
+            if (rays == 0 || rays > (std::numeric_limits<unsigned int>::max)())
+                throw std::invalid_argument("sdf-rays is outside the supported positive integer range");
+            cfg.sdf_rays = static_cast<unsigned int>(rays);
+            sdf_option_given = true;
+        } else if (arg == "--sdf-cone-angle") {
+            const auto value = require_value(arg);
+            std::size_t consumed = 0;
+            cfg.sdf_cone_angle_degrees = std::stod(value, &consumed);
+            if (consumed != value.size())
+                throw std::invalid_argument("Invalid sdf-cone-angle");
+            sdf_option_given = true;
         } else if (arg == "--beta") {
             cfg.chen_beta =
                 std::stod(require_value(arg));
@@ -225,6 +252,10 @@ rar::RemeshConfig parse_args(
 
     if (cfg.remesh_diagnostics && cfg.remesh_backend != rar::RemeshBackend::Custom)
         throw std::invalid_argument("Remesh diagnostics require --remesh-backend custom");
+    if (sdf_option_given && cfg.field_type != rar::FieldType::CGALAdaptiveSDFThickness)
+        throw std::invalid_argument("SDF options require --field cgal-adaptive-sdf-thickness");
+    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness)
+        rar::validate_sdf_thickness_config(cfg);
     return cfg;
 }
 
@@ -247,6 +278,8 @@ void finalize_output_paths(
 void validate_config(
     const rar::RemeshConfig& cfg)
 {
+    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness)
+        rar::validate_sdf_thickness_config(cfg);
     if (!std::isfinite(
             cfg.feature_angle_degrees) ||
         cfg.feature_angle_degrees < 0.0 ||
@@ -442,6 +475,12 @@ void print_config(
         }
     }
 
+    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness) {
+        std::cout << ", sdf_rays=" << cfg.sdf_rays
+                  << ", sdf_cone_angle=" << cfg.sdf_cone_angle_degrees
+                  << ", sdf_postprocess=false, chen=false";
+    }
+
     std::cout
         << ", remesh_backend="
         << rar::remesh_backend_name(cfg.remesh_backend)
@@ -531,6 +570,8 @@ int main(
             !cfg.epsilon_is_explicit;
 
         if (use_auto_epsilon) {
+            if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness)
+                rar::validate_sdf_thickness_mesh(mesh);
             auto_epsilon_stats =
                 rar::estimate_auto_epsilon(
                     mesh,
@@ -597,6 +638,17 @@ int main(
                    rar::FieldType::CGALAdaptiveRadius) {
             rar::run_cgal_adaptive_radius_remeshing(
                 mesh, cfg);
+        } else if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness) {
+            const auto stats = rar::run_sdf_thickness_remeshing(mesh, cfg);
+            std::cout << "SDF initial field (Chen disabled):\n"
+                << "  raw face thickness min/max = " << stats.face_thickness_min << " / " << stats.face_thickness_max << '\n'
+                << "  initial h0 min/max         = " << stats.target_min << " / " << stats.target_max << '\n'
+                << "  thickness-limited vertices = " << stats.thickness_limited_vertices << " / " << stats.vertex_count << '\n'
+                << "  thickness-limited area     = " << stats.thickness_limited_area_fraction << '\n'
+                << "  min/max-edge clipped       = " << stats.min_edge_clipped_vertices << " / " << stats.max_edge_clipped_vertices << '\n';
+            if (cfg.export_field)
+                std::cout << "SDF diagnostics: " << cfg.export_field_prefix << "_sdf_faces.csv, "
+                          << cfg.export_field_prefix << "_sdf.json\n";
         } else if (cfg.field_type ==
                    rar::FieldType::CGALAdaptiveChen) {
             const rar::CGALAdaptiveChenStats field_stats =

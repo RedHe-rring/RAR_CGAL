@@ -56,6 +56,7 @@ inline std::string make_parameterized_stem(
     switch (cfg.field_type) {
     case FieldType::CGALAdaptive:
     case FieldType::CGALAdaptiveRadius:
+    case FieldType::CGALAdaptiveSDFThickness:
     case FieldType::RAR:
         name
             << "__eps-"
@@ -91,6 +92,11 @@ inline std::string make_parameterized_stem(
             << filename_number(
                    cfg.csf_mesh_scale);
         break;
+    }
+
+    if (cfg.field_type == FieldType::CGALAdaptiveSDFThickness) {
+        name << "__sdf-rays-" << cfg.sdf_rays
+             << "__sdf-cone-" << filename_number(cfg.sdf_cone_angle_degrees);
     }
 
     name

@@ -22,6 +22,10 @@ target_include_directories(rar_remesh_diagnostics PUBLIC include
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated/$<CONFIG>")
 target_link_libraries(rar_remesh_diagnostics PUBLIC CGAL::CGAL Eigen3::Eigen)
 
+add_library(rar_sdf_thickness STATIC src/SDFThicknessField.cpp src/SDFThicknessRemesher.cpp)
+target_include_directories(rar_sdf_thickness PUBLIC include)
+target_link_libraries(rar_sdf_thickness PUBLIC CGAL::CGAL Eigen3::Eigen rar_remesh_diagnostics)
+
 option(
     RAR_BUILD_FIELD_VIEWER
     "Build the interactive Polyscope sizing-field viewer"
@@ -41,7 +45,7 @@ add_executable(rar_cgal
 )
 
 target_include_directories(rar_cgal PRIVATE include)
-target_link_libraries(rar_cgal PRIVATE CGAL::CGAL Eigen3::Eigen rar_remesh_diagnostics)
+target_link_libraries(rar_cgal PRIVATE CGAL::CGAL Eigen3::Eigen rar_remesh_diagnostics rar_sdf_thickness)
 
 if(RAR_ENABLE_IPOPT)
     find_path(
@@ -93,9 +97,22 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+    add_executable(rar_sdf_thickness_test tests/sdf_thickness.cpp)
+    target_link_libraries(rar_sdf_thickness_test PRIVATE rar_sdf_thickness)
+    add_test(NAME rar_sdf_thickness_test COMMAND rar_sdf_thickness_test)
+    add_test(NAME rar_sdf_thickness_cli_test
+        COMMAND ${CMAKE_COMMAND}
+            "-DEXE=$<TARGET_FILE:rar_cgal>"
+            "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdf-thickness-cli"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/sdf_thickness_cli.cmake")
     add_executable(rar_smoke_test tests/smoke.cpp)
     target_include_directories(rar_smoke_test PRIVATE include)
     target_link_libraries(rar_smoke_test PRIVATE CGAL::CGAL Eigen3::Eigen)
+    if(MSVC)
+        target_compile_options(rar_smoke_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(rar_smoke_test PRIVATE -UNDEBUG)
+    endif()
     add_test(NAME rar_smoke_test COMMAND rar_smoke_test)
     add_executable(rar_chen_continuation_test tests/chen_continuation.cpp)
     target_include_directories(rar_chen_continuation_test PRIVATE include)

@@ -119,6 +119,8 @@ RemeshDiagnostics::RemeshDiagnostics(const RemeshConfig& cfg)
         << "  \"epsilon_is_explicit\": " << (cfg.epsilon_is_explicit ? "true" : "false") << ",\n"
         << "  \"min_edge_length\": " << cfg.min_edge_length << ",\n"
         << "  \"max_edge_length\": " << cfg.max_edge_length << ",\n"
+        << "  \"sdf_rays\": " << cfg.sdf_rays << ",\n"
+        << "  \"sdf_cone_angle_degrees\": " << cfg.sdf_cone_angle_degrees << ",\n"
         << "  \"chen_beta\": " << cfg.chen_beta << ",\n"
         << "  \"csf_mesh_scale\": " << cfg.csf_mesh_scale << ",\n"
         << "  \"iterations\": " << cfg.iterations << ",\n"
