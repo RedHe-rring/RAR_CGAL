@@ -17,4 +17,4 @@ jobs:
       - name: Build Wang2019 only
         run: cmake --build build --target wang2019_remesh wang2019_smoke_test -j2
       - name: Run Wang2019 test
-        run: ctest --test-dir build -R "wang2019_" --output-on-failure
+        run: ctest --test-dir build -R "wang2019_" -V --output-on-failure
