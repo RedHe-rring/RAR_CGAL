@@ -14,11 +14,11 @@ Implemented:
 - Area-weighted neighboring **triangle-centroid** tangential smoothing (Eq. 1-inspired, area weights are our choice), performed after both operation stages, with nearest-point projection to the **initial input mesh** using a CGAL AABB tree.
 - Boundary / sharp-corner freezing (a conservative stand-in for the paper's feature-specific operations).
 - Per-round angle/violation and vertex-count diagnostics, rejected-operation reason counters, per-operation V/F assertions, and synthetic C++ smoke tests.
-- Default strict-N transactional rounds: if legal collapses cannot balance accepted insertions, restore that round's input mesh. This safeguard can be disabled with `--allow-drift`.
+- Default strict-N transactional rounds: if legal collapses cannot balance accepted insertions, **retry the round with half the batch size k** until a balanced batch is found (or k reaches 1); otherwise restore the input mesh for that round. This is a safeguard, not the paper's original strategy. Use `--allow-drift` to disable it.
 
 Still missing for a paper-level reproduction:
 1. Match **all** cases of Fig. 4 precisely: currently only a simple split plus a locally best legal outer-edge flip is attempted; boundary/feature configurations and the exact affected-angle objective remain incomplete.
-2. Match the paper's exact k adaptation, stopping conditions, smoothing weights, and efficient local 2–3-ring scheduling. Our default `--budget 0.02` is the fraction of bad triangles, while `--k` specifies an explicit stage budget.
+2. Match the paper's exact k adaptation, stopping conditions, smoothing weights, and efficient local 2–3-ring scheduling. Our `--k-ratio 0.2` uses the 20% proportion stated for the paper's timing experiment; `--k` specifies an explicit stage budget. `--budget` is a deprecated alias for `--k-ratio`.
 3. Reproduce initial sizing-field construction for an explicitly requested target N. Strict-N currently preserves the input's live vertex count by rolling back an unbalanced round; it is not a faithful recovery strategy when collapse options run out.
 4. Implement the paper's own feature handling rather than freezing nearby vertices.
 5. Add quantitative approximation-error / intersection checks; nearest-point projection and local normal guards do **not** guarantee global geometric fidelity or absence of self-intersection.
@@ -50,7 +50,7 @@ Compare **the same initial mesh** before/after postprocessing:
 - Surface-to-surface error (ideally symmetric HD and/or sampled CD), connected components and boundary edges, geometric self-intersections.
 - Separate results for feature protection on and off.
 
-The operation budget bounds how many splits/collapses are *attempted successfully* per pass and is **not** a target vertex count. The initial input mesh is the projection reference. A remeshed input yields projection to that remeshed surface, not to its own earlier ground-truth geometry.
+The `k` stage budget caps **successful** insertions and candidate collapses; `--k-ratio` derives it from the number of bad triangles and is **not** a target vertex count. This behavior is still an approximation to the paper's first-k-triangles processing. The initial input mesh is the projection reference. A remeshed input yields projection to that remeshed surface, not to its own earlier ground-truth geometry.
 
 Implementation location: `include/rar/Wang2019Remesher.h`, standalone CLI `src/wang2019_main.cpp`. No edits to existing RAR/Chen algorithm code.
 
@@ -60,9 +60,18 @@ Implementation location: `include/rar/Wang2019Remesher.h`, standalone CLI `src/w
 .\build\Release\wang2019_remesh.exe .\data\wine_glass24.ply .\data\wine_glass24_wang19.ply --min-angle 30 --max-angle 90 --rounds 10 --budget 0.02 --smooth 3
 ```
 
-- Operation budgets are derived from the number of currently **bad triangles**, not total input vertices. Use `--k 50` to specify a fixed number explicitly.
-- `--allow-drift` disables strict live-vertex-count rollback and permits independent insertions/collapses for debugging. Default mode commits only balanced rounds.
+- The default `--k-ratio 0.2` derives k from the larger of the current small/large-angle violation counts (paper timing experiment uses 20%). Use `--k 50` to fix the stage budget. `--budget` remains accepted as a compatibility alias.
+- `--allow-drift` disables strict live-vertex-count rollback and permits independent insertions/collapses for debugging. Default mode retries smaller k values and commits only balanced rounds.
 - `V` and `F` now count **live** Surface_mesh elements (`number_of_vertices()`, `number_of_faces()`), *not* the allocated descriptor slots returned by `num_vertices()` / `num_faces()`.
 - Every accepted interior split must add +1 live vertex and +2 live triangles; every interior collapse must remove -1 live vertex and -2 live triangles. A mismatch throws before saving output.
 - A detailed rejection breakdown (`boundary`, `feature`, `geometry`, `no-improvement`, `topology`) is printed per round.
-- The default strict-N mechanism copies the full mesh once per round. It is a correctness-first implementation with significant memory/time overhead on large inputs.
+- The strict-N mechanism copies the full mesh on each round and may restore it for smaller-k retries. It can incur significant memory/time overhead on large meshes.
+
+## Section 4.2 status update
+
+- Paper defaults: **35° / 86°**; CLI still supports explicitly setting 30° / 90° (and examples do so).
+- The `beta_min` selection rule is now explicit and covered by a synthetic test: start at the **user's** bound and temporarily raise it only when the number of candidate triangles is below the needed deletion count.
+- When a batch inserts more vertices than it can collapse, strict-N mode retries with a smaller `k`, instead of immediately discarding the entire iteration.
+- The insertion evaluator excludes candidate flips that would reconnect the new midpoint to one of the original four quadrilateral corners (which would duplicate an existing edge).
+- New deterministic planar-grid testing requires at least one successful large-angle insertion, beyond just checking that a C++ binary runs.
+- **Unresolved:** exact Fig. 4(a–f) cases, precise insertion acceptance and paper-specific feature handling; this executable remains a research prototype rather than an exact reproduction.
