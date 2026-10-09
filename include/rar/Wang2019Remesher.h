@@ -200,31 +200,6 @@ inline double angle_energy(const Point& a, const Point& b, const Point& c) {
     return a0*a0 + a1*a1 + a2*a2;
 }
 
-// Evaluate (without mutating) flipping this triangle-triangle edge.
-// Used to select a local angle-optimal flip after the center-edge split.
-// This does not yet enumerate the feature-specific Fig. 4(c-f) cases.
-inline bool evaluate_angle_flip(const Mesh& m, Edge e, const Options& opt,
-                                double& score) {
-    if (m.is_removed(e) || is_feature_edge(m, e, opt)) return false;
-    const Halfedge h = halfedge(e, m), ho = opposite(h, m);
-    const Vertex a = source(h, m), b = target(h, m);
-    const Vertex c = target(next(h, m), m), d = target(next(ho, m), m);
-    if (c == d || a == d || b == c ||
-        m.halfedge(c, d) != Mesh::null_halfedge() ||
-        m.degree(a) < 4 || m.degree(b) < 4) return false;
-    const Point pa=m.point(a), pb=m.point(b), pc=m.point(c), pd=m.point(d);
-    const Vector n0=normal(pa,pb,pc), n1=normal(pb,pa,pd);
-    if (!acceptable_triangle(pc,pd,pb,n0) ||
-        !acceptable_triangle(pd,pc,pa,n1)) return false;
-    const double old_max=(std::max)(triangle_angles(pa,pb,pc).max,
-                                      triangle_angles(pb,pa,pd).max);
-    const double new_max=(std::max)(triangle_angles(pc,pd,pb).max,
-                                      triangle_angles(pd,pc,pa).max);
-    if (new_max > (std::max)(old_max, opt.max_angle) + 1e-7) return false;
-    score=angle_energy(pc,pd,pb)+angle_energy(pd,pc,pa);
-    return true;
-}
-
 inline bool split_quad(Mesh& m, Face f, Vertex vm) {
     // Euler::split_edge gives a quad, NOT two triangles. Connect the new
     // vertex to the opposite quad vertex with Euler::split_face.
@@ -309,7 +284,11 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
         Vertex x=Mesh::null_vertex();
         for (const Vertex t : ov)
             if (t!=u && t!=v) x=t;
-        if (x==Mesh::null_vertex() || x==va || x==vb) continue;
+        // After splitting, the new vertex is already adjacent to all four
+        // quadrilateral corners. A flip onto one of them would duplicate
+        // an existing edge, violating Surface_mesh topology.
+        if (x==Mesh::null_vertex() || x==va || x==vb ||
+            x==vc || x==vd) continue;
         const Point pu=m.point(u),pv=m.point(v),px=m.point(x);
         const Vector old_inner=normal(pu,pv,p);
         const Vector old_outer=normal(pv,pu,px);
