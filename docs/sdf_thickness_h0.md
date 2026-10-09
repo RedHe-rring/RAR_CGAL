@@ -84,14 +84,18 @@ their neighbors' target lengths. SDF and curvature are not recomputed each
 iteration, and initial diagnostic properties are not evolving fields.
 
 The first version requires a nonempty, closed triangle mesh with finite
-coordinates, manifold vertices, nondegenerate faces, no self-intersections,
-and orientation bounding a positive-volume solid. The CLI can triangulate
+coordinates, manifold vertices, and nondegenerate faces. On an
+intersection-free input, it also checks that the orientation bounds a
+positive-volume solid. Self-intersections produce a warning and are recorded
+in SDF metadata; the solid orientation/volume check is skipped in that case
+because it assumes intersection-free geometry. CGAL still computes the SDF,
+but ray hits and thickness estimates may be unreliable. The CLI can triangulate
 polygonal input using its existing path. It does not repair or reorient it.
 SDF values of `-1`, zero, or non-finite values cause an error reporting the
 number of invalid faces. There is no silent fallback or imputation.
 
 The previous Radius report identified self-intersections in the Camel/Shark
-inputs; those inputs will need separate attention before using this strict mode.
+inputs. Their SDF outputs require geometric inspection before comparison.
 
 ## Parameters and output
 
@@ -117,7 +121,7 @@ With field prefix `result/field`, initial diagnostics are:
 | --- | --- |
 | `field.csv`, `field.ply` | Initial vertex curvature, target length, thickness, vertex area, local epsilon, dimensionless epsilon*kappa, limiter and clipping flags. In Chen mode, `target_length` is corrected and `raw_target_length` is the original `h0`. |
 | `field_sdf_faces.csv` | Original face descriptor, centroid, area, raw thickness, validity flag |
-| `field_sdf.json` | SDF parameters, units, transfer/invalid-value policy, Chen status and correction summary, area-weighted thickness-limited fraction |
+| `field_sdf.json` | SDF parameters, units, transfer/invalid-value policy, input self-intersection status, Chen status and correction summary, area-weighted thickness-limited fraction |
 
 Limiter flags include ties; they do not form mutually exclusive categories.
 Clipping flags are independent of epsilon-limit flags. Face validity is 1 on

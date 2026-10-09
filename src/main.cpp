@@ -57,7 +57,7 @@ void print_usage(const char* exe) {
         << "  cgal-adaptive-radius  Curvature-radius-guarded CGAL-style field, without Chen correction.\n"
         << "  cgal-adaptive-sdf-thickness  Local epsilon capped by 0.183/kappa and raw SDF/4, without Chen.\n"
         << "  cgal-adaptive-sdf-thickness-chen  The same SDF initial field followed by Chen correction.\n"
-        << "                      Requires closed, oriented, non-self-intersecting input.\n"
+        << "                      Requires closed, manifold input; self-intersections warn.\n"
         << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
         << "  cgal-adaptive-radius-chen  Curvature-radius-guarded CGAL field followed by Chen correction.\n"
         << "  rar                 RAR cotangent-curvature sizing field with the selected remeshing backend.\n"

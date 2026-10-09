@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 #include <vector>
 
 namespace {
@@ -87,6 +88,7 @@ void field_tests()
     cfg.max_edge_length = 10;
     cfg.sdf_cone_angle_degrees = .01;
     const auto field = rar::make_sdf_thickness_field(mesh, cfg);
+    require(!field.stats.input_self_intersections, "clean slab flagged as self-intersecting");
     require(mesh.number_of_vertices()==8 && mesh.number_of_faces()==12, "field changed topology");
     require(field.stats.thickness_limited_vertices > 0, "slab did not activate thickness limiter");
     // Near-normal rays on the broad faces of a closed slab measure its known
@@ -143,7 +145,24 @@ void field_tests()
     rar::Mesh crossing;
     add_box(crossing);
     add_box(crossing,.5);
-    rejects([&] { rar::validate_sdf_thickness_mesh(crossing); });
+    require(rar::validate_sdf_thickness_mesh(crossing), "crossing boxes not detected");
+    // Self-intersections no longer stop field construction at validation.
+    // Some rays on overlapping boxes have no usable hit, which remains an error.
+    std::ostringstream warning_stream;
+    auto* previous_stderr = std::cerr.rdbuf(warning_stream.rdbuf());
+    bool self_intersections_recorded = false;
+    std::string crossing_error;
+    try {
+        const auto crossing_field = rar::make_sdf_thickness_field(crossing,cfg);
+        self_intersections_recorded = crossing_field.stats.input_self_intersections;
+    } catch (const std::exception& error) {
+        crossing_error = error.what();
+    }
+    std::cerr.rdbuf(previous_stderr);
+    require(self_intersections_recorded || crossing_error.find("CGAL SDF returned") != std::string::npos,
+            "self-intersection was rejected before SDF sampling");
+    require(warning_stream.str().find("Warning: SDF thickness input has self-intersections") != std::string::npos,
+            "self-intersection warning missing");
     rar::Mesh open;
     const auto a=open.add_vertex({0,0,0}), b=open.add_vertex({1,0,0}), c=open.add_vertex({0,1,0});
     open.add_face(a,b,c);

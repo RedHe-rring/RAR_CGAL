@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <vector>
@@ -31,7 +32,7 @@ void validate_sdf_thickness_config(const RemeshConfig& cfg)
         throw std::invalid_argument("sdf-cone-angle must be finite and in (0, 180) degrees");
 }
 
-void validate_sdf_thickness_mesh(const Mesh& mesh)
+bool validate_sdf_thickness_mesh(const Mesh& mesh)
 {
     if (mesh.number_of_faces() == 0 || !CGAL::is_valid_polygon_mesh(mesh) ||
         !CGAL::is_triangle_mesh(mesh))
@@ -55,17 +56,23 @@ void validate_sdf_thickness_mesh(const Mesh& mesh)
             throw std::invalid_argument("SDF thickness rejects degenerate or non-finite face " +
                                         std::to_string(f.idx()));
     }
-    // The volume/orientation routines require an intersection-free mesh.
+    // The volume/orientation routines assume an intersection-free mesh.
+    // SDF can still be attempted, but its ray lengths may be unreliable.
     if (PMP::does_self_intersect(mesh))
-        throw std::invalid_argument("SDF thickness requires an input without self-intersections");
+        return true;
     if (!PMP::does_bound_a_volume(mesh) || !(CGAL::to_double(PMP::volume(mesh)) > 0.0))
         throw std::invalid_argument("SDF thickness requires consistently oriented boundaries of a bounded solid");
+    return false;
 }
 
 SDFThicknessField make_sdf_thickness_field(Mesh& mesh, const RemeshConfig& cfg)
 {
     validate_sdf_thickness_config(cfg);
-    validate_sdf_thickness_mesh(mesh);
+    const bool input_self_intersections = validate_sdf_thickness_mesh(mesh);
+    if (input_self_intersections)
+        std::cerr << "Warning: SDF thickness input has self-intersections; "
+                     "ray-based thickness may be unreliable. "
+                     "Solid orientation/volume validation was skipped.\n";
     auto face_t = mesh.add_property_map<Mesh::Face_index, double>("f:sdf_raw_thickness", -1.0).first;
     auto face_area = mesh.add_property_map<Mesh::Face_index, double>("f:sdf_area", 0.0).first;
     // CGAL already removes outlier ray lengths in this raw computation.
@@ -88,6 +95,7 @@ SDFThicknessField make_sdf_thickness_field(Mesh& mesh, const RemeshConfig& cfg)
     // Reinitialize existing properties too: repeated construction must not accumulate.
     for (const auto v : mesh.vertices()) { thickness[v] = 0.0; vertex_area[v] = 0.0; }
     SDFThicknessStats stats;
+    stats.input_self_intersections = input_self_intersections;
     stats.face_count = mesh.number_of_faces();
     stats.vertex_count = mesh.number_of_vertices();
     stats.face_thickness_min = stats.target_min = std::numeric_limits<double>::infinity();

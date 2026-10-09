@@ -68,6 +68,8 @@ void write_sdf_thickness_field(const Mesh& mesh, const RemeshConfig& cfg,
         << "  \"vertex_transfer\": \"incident face area weighted mean\",\n"
         << "  \"invalid_sdf_policy\": \"error\",\n  \"chen_applied\": "
         << (corrected ? "true" : "false") << ",\n"
+        << "  \"input_self_intersections\": "
+        << (field.stats.input_self_intersections ? "true" : "false") << ",\n"
         << "  \"sdf_rays\": " << cfg.sdf_rays << ",\n"
         << "  \"sdf_cone_angle_degrees\": " << cfg.sdf_cone_angle_degrees << ",\n"
         << "  \"radius_epsilon_ratio\": 0.183,\n"

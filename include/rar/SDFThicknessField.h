@@ -10,6 +10,7 @@
 namespace rar {
 
 struct SDFThicknessStats {
+    bool input_self_intersections = false;
     std::size_t face_count = 0;
     std::size_t vertex_count = 0;
     std::size_t thickness_limited_vertices = 0;
@@ -43,7 +44,8 @@ struct SDFThicknessField {
 
 void validate_sdf_thickness_config(const RemeshConfig& cfg);
 // Checks the input before any curvature estimation or ray intersection.
-void validate_sdf_thickness_mesh(const Mesh& mesh);
+// Returns true when self-intersections were found; that condition is a warning.
+bool validate_sdf_thickness_mesh(const Mesh& mesh);
 // Raw, unnormalized CGAL SDF, then area-weighted incident-face averaging.
 // Missing SDF, invalid curvature, or invalid geometry is an explicit error.
 SDFThicknessField make_sdf_thickness_field(Mesh& mesh, const RemeshConfig& cfg);
