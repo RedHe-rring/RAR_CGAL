@@ -14,8 +14,8 @@ namespace {
 void usage() {
     std::cout <<
         "wang2019_remesh input.ply output.ply [options]\n"
-        "  --min-angle D      small-angle threshold in degrees (default 30)\n"
-        "  --max-angle D      large-angle threshold in degrees (default 90)\n"
+        "  --min-angle D      small-angle threshold in degrees (default 35)\n"
+        "  --max-angle D      large-angle threshold in degrees (default 86)\n"
         "  --rounds N         maximal alternating rounds (default 10)\n"
         "  --k-ratio F        fraction of bad triangles per stage (default 0.20)\n"
         "  --budget F         deprecated alias for --k-ratio\n"
