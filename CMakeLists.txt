@@ -104,6 +104,7 @@ if(BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DEXE=$<TARGET_FILE:rar_cgal>"
             "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/sdf-thickness-cli"
+            "-DWITH_IPOPT=$<AND:$<BOOL:${RAR_ENABLE_IPOPT}>,$<BOOL:${IPOPT_INCLUDE_DIR}>,$<BOOL:${IPOPT_LIBRARY}>>"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/sdf_thickness_cli.cmake")
     add_executable(rar_smoke_test tests/smoke.cpp)
     target_include_directories(rar_smoke_test PRIVATE include)

@@ -53,10 +53,13 @@ inline std::string make_parameterized_stem(
     std::ostringstream name;
     name << stem;
 
-    if (cfg.field_type == FieldType::CGALAdaptiveSDFThickness) {
+    if (cfg.field_type == FieldType::CGALAdaptiveSDFThickness ||
+        cfg.field_type == FieldType::CGALAdaptiveSDFThicknessChen) {
         // Keep automatic SDF result/diagnostic paths short on Windows while
         // retaining every parameter that changes the generated field/output.
-        name << "__sdf-h0__e-" << filename_number(cfg.epsilon)
+        name << (cfg.field_type == FieldType::CGALAdaptiveSDFThicknessChen
+                     ? "__sdf-h0-chen__e-" : "__sdf-h0__e-")
+             << filename_number(cfg.epsilon)
              << "__mn-" << filename_number(cfg.min_edge_length)
              << "__mx-" << filename_number(cfg.max_edge_length)
              << "__r" << cfg.sdf_rays
@@ -65,6 +68,8 @@ inline std::string make_parameterized_stem(
              << "__q" << cfg.relaxation_steps
              << "__p" << (cfg.do_project ? 1 : 0)
              << "__f" << (cfg.preserve_features ? 1 : 0);
+        if (cfg.field_type == FieldType::CGALAdaptiveSDFThicknessChen)
+            name << "__beta-" << filename_number(cfg.chen_beta);
         if (cfg.preserve_features)
             name << "__fa-" << filename_number(cfg.feature_angle_degrees);
         name << "__b-" << remesh_backend_name(cfg.remesh_backend);

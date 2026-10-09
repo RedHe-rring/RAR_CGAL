@@ -16,6 +16,7 @@ enum class FieldType {
     CGALAdaptive,
     CGALAdaptiveRadius,
     CGALAdaptiveSDFThickness,
+    CGALAdaptiveSDFThicknessChen,
     CGALAdaptiveChen,
     CGALAdaptiveRadiusChen,
     RAR,
@@ -33,6 +34,8 @@ inline const char* field_type_name(
         return "cgal-adaptive-radius";
     case FieldType::CGALAdaptiveSDFThickness:
         return "cgal-adaptive-sdf-thickness";
+    case FieldType::CGALAdaptiveSDFThicknessChen:
+        return "cgal-adaptive-sdf-thickness-chen";
     case FieldType::CGALAdaptiveChen:
         return "cgal-adaptive-chen";
     case FieldType::CGALAdaptiveRadiusChen:

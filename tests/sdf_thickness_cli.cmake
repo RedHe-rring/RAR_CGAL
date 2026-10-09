@@ -32,6 +32,94 @@ if(NOT hash_cgal STREQUAL hash_custom)
     message(FATAL_ERROR "SDF backend parity failed")
 endif()
 
+# Chen mode preserves the SDF initial target and exports the corrected target.
+set(chen_args --field cgal-adaptive-sdf-thickness-chen --epsilon 0.04
+    --min-edge 0.15 --max-edge 0.7 --sdf-rays 31 --sdf-cone-angle 90
+    --beta 1.05 --iterations 1)
+if(WITH_IPOPT)
+    foreach(backend cgal custom)
+        set(prefix "${TEST_DIR}/chen-${backend}/field")
+        execute_process(COMMAND "${EXE}" "${input}" "${TEST_DIR}/chen-${backend}.off"
+            ${chen_args} --remesh-backend "${backend}" --export-field "${prefix}"
+            RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)
+        if(NOT "${result}" STREQUAL "0" OR NOT stdout MATCHES "Chen correction:")
+            message(FATAL_ERROR "SDF+Chen ${backend} failed: ${stdout}\n${stderr}")
+        endif()
+        file(SHA256 "${TEST_DIR}/chen-${backend}.off" chen_hash_${backend})
+        file(STRINGS "${prefix}.csv" chen_rows)
+        list(GET chen_rows 0 header)
+        if(NOT header MATCHES "curvature,raw_target_length,target_length,thickness")
+            message(FATAL_ERROR "SDF+Chen raw/corrected targets missing")
+        endif()
+        file(READ "${prefix}_sdf.json" chen_metadata)
+        string(JSON chen_enabled GET "${chen_metadata}" chen_applied)
+        string(JSON chen_beta GET "${chen_metadata}" chen_beta)
+        string(JSON chen_field GET "${chen_metadata}" field)
+        string(JSON chen_rays GET "${chen_metadata}" sdf_rays)
+        string(JSON chen_angle GET "${chen_metadata}" sdf_cone_angle_degrees)
+        if(NOT chen_enabled OR NOT chen_beta EQUAL 1.05 OR
+           NOT chen_field STREQUAL "cgal-adaptive-sdf-thickness-chen" OR
+           NOT chen_rays EQUAL 31 OR NOT chen_angle EQUAL 90)
+            message(FATAL_ERROR "Incorrect SDF+Chen metadata")
+        endif()
+        list(REMOVE_AT chen_rows 0)
+        foreach(row IN LISTS chen_rows)
+            string(REPLACE "," ";" values "${row}")
+            list(GET values 5 raw_target)
+            list(GET values 6 corrected_target)
+            if(corrected_target GREATER raw_target OR corrected_target LESS 0.15)
+                message(FATAL_ERROR "SDF+Chen target outside [min_edge, raw_target]")
+            endif()
+        endforeach()
+    endforeach()
+    if(NOT chen_hash_cgal STREQUAL chen_hash_custom)
+        message(FATAL_ERROR "SDF+Chen backend parity failed")
+    endif()
+
+    # An asymmetric shape must actually enter the IPOPT correction path.
+    set(irregular "${TEST_DIR}/irregular.off")
+    file(READ "${input}" irregular_off)
+    string(REPLACE "1 0 0" "3 0 0" irregular_off "${irregular_off}")
+    string(REPLACE "0 0 1" "0 0 0.2" irregular_off "${irregular_off}")
+    file(WRITE "${irregular}" "${irregular_off}")
+    set(prefix "${TEST_DIR}/irregular/field")
+    execute_process(COMMAND "${EXE}" "${irregular}" "${TEST_DIR}/irregular-result.off"
+        --field cgal-adaptive-sdf-thickness-chen --epsilon 0.1
+        --min-edge 0.01 --max-edge 1 --beta 1.01 --iterations 0
+        --export-field "${prefix}"
+        RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)
+    if(NOT "${result}" STREQUAL "0")
+        message(FATAL_ERROR "SDF+Chen active correction failed: ${stdout}\n${stderr}")
+    endif()
+    file(READ "${prefix}_sdf.json" active_metadata)
+    string(JSON changed GET "${active_metadata}" chen_changed_vertex_count)
+    string(JSON before GET "${active_metadata}" chen_max_gradient_before)
+    string(JSON after GET "${active_metadata}" chen_max_gradient_after)
+    if(NOT changed GREATER 0 OR NOT before GREATER after OR after GREATER 0.0101)
+        message(FATAL_ERROR "SDF+Chen did not enforce the beta=1.01 gradient limit")
+    endif()
+
+    execute_process(COMMAND "${EXE}" "${input}" --field cgal-adaptive-sdf-thickness-chen
+        --epsilon 0.04 --beta 1.05 --iterations 0 --no-export-field
+        RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)
+    if(NOT "${result}" STREQUAL "0" OR
+       NOT stdout MATCHES "__sdf-h0-chen__e-0p04__mn-0p001__mx-0p5__r25__a120__i0__q3__p1__f0__beta-1p05__b-cgal")
+        message(FATAL_ERROR "SDF+Chen compact automatic naming failed: ${stdout}\n${stderr}")
+    endif()
+else()
+    execute_process(COMMAND "${EXE}" "${input}" ${chen_args}
+        RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)
+    if("${result}" STREQUAL "0" OR NOT stderr MATCHES "requires IPOPT")
+        message(FATAL_ERROR "SDF+Chen must report missing IPOPT: ${stdout}\n${stderr}")
+    endif()
+endif()
+
+execute_process(COMMAND "${EXE}" "${input}" ${chen_args} --beta 1
+    RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)
+if("${result}" STREQUAL "0" OR NOT stderr MATCHES "beta must be")
+    message(FATAL_ERROR "SDF+Chen accepted invalid beta: ${stdout}\n${stderr}")
+endif()
+
 execute_process(COMMAND "${EXE}" "${input}" "${TEST_DIR}/observed.off" ${args}
     --remesh-backend custom --remesh-diagnostics --no-export-field
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr TIMEOUT 60)

@@ -33,7 +33,7 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-sdf-thickness | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-radius | cgal-adaptive-sdf-thickness | cgal-adaptive-sdf-thickness-chen | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
         << "  --remesh-backend <name> cgal | custom (default: cgal)\n"
         << "  --remesh-diagnostics    Save snapshots beside field files (custom backend)\n"
         << "  --diagnostic-level <name> stage | operation (default: stage)\n"
@@ -55,7 +55,8 @@ void print_usage(const char* exe) {
         << "Field notes:\n"
         << "  cgal-adaptive       CGAL 6.1.x Adaptive_sizing_field.\n"
         << "  cgal-adaptive-radius  Curvature-radius-guarded CGAL-style field, without Chen correction.\n"
-        << "  cgal-adaptive-sdf-thickness  Local epsilon capped by 0.183/kappa and raw SDF/2, without Chen.\n"
+        << "  cgal-adaptive-sdf-thickness  Local epsilon capped by 0.183/kappa and raw SDF/4, without Chen.\n"
+        << "  cgal-adaptive-sdf-thickness-chen  The same SDF initial field followed by Chen correction.\n"
         << "                      Requires closed, oriented, non-self-intersecting input.\n"
         << "  cgal-adaptive-chen  CGAL adaptive field followed by Chen correction.\n"
         << "  cgal-adaptive-radius-chen  Curvature-radius-guarded CGAL field followed by Chen correction.\n"
@@ -79,6 +80,10 @@ rar::FieldType parse_field_type(
 
     if (value == "cgal-adaptive-sdf-thickness") {
         return rar::FieldType::CGALAdaptiveSDFThickness;
+    }
+
+    if (value == "cgal-adaptive-sdf-thickness-chen") {
+        return rar::FieldType::CGALAdaptiveSDFThicknessChen;
     }
 
     if (value == "cgal-adaptive-chen" ||
@@ -105,7 +110,7 @@ rar::FieldType parse_field_type(
 
     throw std::invalid_argument(
         "Unknown field '" + value +
-        "'. Expected cgal-adaptive, cgal-adaptive-radius, cgal-adaptive-sdf-thickness, cgal-adaptive-chen, "
+        "'. Expected cgal-adaptive, cgal-adaptive-radius, cgal-adaptive-sdf-thickness, cgal-adaptive-sdf-thickness-chen, cgal-adaptive-chen, "
         "cgal-adaptive-radius-chen, rar, rar-chen, or csf.");
 }
 
@@ -252,9 +257,11 @@ rar::RemeshConfig parse_args(
 
     if (cfg.remesh_diagnostics && cfg.remesh_backend != rar::RemeshBackend::Custom)
         throw std::invalid_argument("Remesh diagnostics require --remesh-backend custom");
-    if (sdf_option_given && cfg.field_type != rar::FieldType::CGALAdaptiveSDFThickness)
-        throw std::invalid_argument("SDF options require --field cgal-adaptive-sdf-thickness");
-    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness)
+    if (sdf_option_given && cfg.field_type != rar::FieldType::CGALAdaptiveSDFThickness &&
+        cfg.field_type != rar::FieldType::CGALAdaptiveSDFThicknessChen)
+        throw std::invalid_argument("SDF options require an SDF thickness field mode");
+    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness ||
+        cfg.field_type == rar::FieldType::CGALAdaptiveSDFThicknessChen)
         rar::validate_sdf_thickness_config(cfg);
     return cfg;
 }
@@ -278,7 +285,8 @@ void finalize_output_paths(
 void validate_config(
     const rar::RemeshConfig& cfg)
 {
-    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness)
+    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness ||
+        cfg.field_type == rar::FieldType::CGALAdaptiveSDFThicknessChen)
         rar::validate_sdf_thickness_config(cfg);
     if (!std::isfinite(
             cfg.feature_angle_degrees) ||
@@ -320,8 +328,10 @@ void validate_config(
          cfg.field_type ==
              rar::FieldType::CGALAdaptiveChen ||
          cfg.field_type ==
-             rar::FieldType::CGALAdaptiveRadiusChen) &&
-        !(cfg.chen_beta > 1.0)) {
+             rar::FieldType::CGALAdaptiveRadiusChen ||
+         cfg.field_type ==
+             rar::FieldType::CGALAdaptiveSDFThicknessChen) &&
+        (!(cfg.chen_beta > 1.0) || !std::isfinite(cfg.chen_beta))) {
         throw std::invalid_argument(
             "beta must be > 1 for Chen-corrected fields");
     }
@@ -468,17 +478,21 @@ void print_config(
             cfg.field_type ==
                 rar::FieldType::CGALAdaptiveChen ||
             cfg.field_type ==
-                rar::FieldType::CGALAdaptiveRadiusChen) {
+                rar::FieldType::CGALAdaptiveRadiusChen ||
+            cfg.field_type ==
+                rar::FieldType::CGALAdaptiveSDFThicknessChen) {
             std::cout
                 << ", beta="
                 << cfg.chen_beta;
         }
     }
 
-    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness) {
+    if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness ||
+        cfg.field_type == rar::FieldType::CGALAdaptiveSDFThicknessChen) {
         std::cout << ", sdf_rays=" << cfg.sdf_rays
                   << ", sdf_cone_angle=" << cfg.sdf_cone_angle_degrees
-                  << ", sdf_postprocess=false, chen=false";
+                  << ", sdf_postprocess=false, chen="
+                  << (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThicknessChen ? "true" : "false");
     }
 
     std::cout
@@ -570,7 +584,8 @@ int main(
             !cfg.epsilon_is_explicit;
 
         if (use_auto_epsilon) {
-            if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness)
+            if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThickness ||
+                cfg.field_type == rar::FieldType::CGALAdaptiveSDFThicknessChen)
                 rar::validate_sdf_thickness_mesh(mesh);
             auto_epsilon_stats =
                 rar::estimate_auto_epsilon(
@@ -646,6 +661,24 @@ int main(
                 << "  thickness-limited vertices = " << stats.thickness_limited_vertices << " / " << stats.vertex_count << '\n'
                 << "  thickness-limited area     = " << stats.thickness_limited_area_fraction << '\n'
                 << "  min/max-edge clipped       = " << stats.min_edge_clipped_vertices << " / " << stats.max_edge_clipped_vertices << '\n';
+            if (cfg.export_field)
+                std::cout << "SDF diagnostics: " << cfg.export_field_prefix << "_sdf_faces.csv, "
+                          << cfg.export_field_prefix << "_sdf.json\n";
+        } else if (cfg.field_type == rar::FieldType::CGALAdaptiveSDFThicknessChen) {
+            const auto stats = rar::run_sdf_thickness_chen_remeshing(mesh, cfg);
+            std::cout << "SDF initial field:\n"
+                << "  raw face thickness min/max = " << stats.initial.face_thickness_min << " / " << stats.initial.face_thickness_max << '\n'
+                << "  initial h0 min/max         = " << stats.initial.target_min << " / " << stats.initial.target_max << '\n'
+                << "  thickness-limited vertices = " << stats.initial.thickness_limited_vertices << " / " << stats.initial.vertex_count << '\n'
+                << "  thickness-limited area     = " << stats.initial.thickness_limited_area_fraction << '\n'
+                << "Chen correction:\n"
+                << "  beta                       = " << cfg.chen_beta << '\n'
+                << "  corrected h min/mean/max   = " << stats.corrected_min << " / " << stats.corrected_mean << " / " << stats.corrected_max << '\n'
+                << "  max |grad h| before/after  = " << stats.correction.max_gradient_before << " / " << stats.correction.max_gradient_after << '\n'
+                << "  changed vertices           = " << stats.correction.changed_vertex_count << " / " << stats.initial.vertex_count << '\n'
+                << "  estimated element objective = " << stats.correction.objective << '\n'
+                << "  continuation completed/failed = " << stats.correction.completed_fraction << " / " << stats.correction.failed_fraction << '\n'
+                << "  fallback used              = " << (stats.correction.used_fallback ? "true" : "false") << '\n';
             if (cfg.export_field)
                 std::cout << "SDF diagnostics: " << cfg.export_field_prefix << "_sdf_faces.csv, "
                           << cfg.export_field_prefix << "_sdf.json\n";

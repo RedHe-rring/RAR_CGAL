@@ -1,6 +1,7 @@
 #pragma once
 
 #include "rar/RemeshConfig.h"
+#include "rar/ChenSizingCorrection.h"
 #include "rar/SDFThicknessSizing.h"
 #include "rar/Types.h"
 
@@ -21,6 +22,14 @@ struct SDFThicknessStats {
     double target_max = 0.0;
 };
 
+struct SDFThicknessChenStats {
+    SDFThicknessStats initial;
+    ChenCorrectionStats correction;
+    double corrected_min = 0.0;
+    double corrected_max = 0.0;
+    double corrected_mean = 0.0;
+};
+
 struct SDFThicknessField {
     Mesh::Property_map<Mesh::Face_index, double> face_thickness;
     Mesh::Property_map<Mesh::Face_index, double> face_area;
@@ -39,7 +48,10 @@ void validate_sdf_thickness_mesh(const Mesh& mesh);
 // Missing SDF, invalid curvature, or invalid geometry is an explicit error.
 SDFThicknessField make_sdf_thickness_field(Mesh& mesh, const RemeshConfig& cfg);
 void write_sdf_thickness_field(const Mesh& mesh, const RemeshConfig& cfg,
-                             const SDFThicknessField& field);
+                             const SDFThicknessField& field,
+                             const Mesh::Property_map<Mesh::Vertex_index, double>* corrected = nullptr,
+                             const ChenCorrectionStats* correction = nullptr);
 SDFThicknessStats run_sdf_thickness_remeshing(Mesh& mesh, const RemeshConfig& cfg);
+SDFThicknessChenStats run_sdf_thickness_chen_remeshing(Mesh& mesh, const RemeshConfig& cfg);
 
 } // namespace rar

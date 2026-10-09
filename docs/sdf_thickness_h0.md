@@ -1,8 +1,11 @@
 # SDF thickness initial sizing field
 
-This worktree adds `--field cgal-adaptive-sdf-thickness`. It constructs an initial
-target edge-length field, then uses the existing `PropertyMapSizingField` and
-the selected `cgal` or `custom` remeshing backend. Chen correction is not called.
+This worktree provides `--field cgal-adaptive-sdf-thickness` and
+`--field cgal-adaptive-sdf-thickness-chen`. Both construct the same initial
+target edge-length field and use the existing `PropertyMapSizingField` with
+the selected `cgal` or `custom` remeshing backend. The second mode applies
+Chen's gradient-constrained correction to `h0` before remeshing; the original
+mode does not call Chen.
 
 ## Workspace and baseline
 
@@ -14,7 +17,7 @@ the selected `cgal` or `custom` remeshing backend. Chen correction is not called
 - Radius ablation commits on `exp/chen-element-count-objective` have not been
   merged. The existing `cgal-adaptive-radius` mode is available in this branch.
 
-This stage implements and tests the mode. No Wine/Camel/Shark runs, parameter
+This stage implements and tests the modes. No Wine/Camel/Shark runs, parameter
 sweeps, quality comparisons, or experiment results are included.
 
 ## Definition
@@ -54,6 +57,12 @@ thin region can still have `h0 = max_edge`. This formula and the remesher do not
 provide a certified approximation-error, wall-preservation, or no-intersection
 guarantee. Applying `min_edge` can also raise the target above the formula.
 
+In the `-chen` mode, the existing Chen solver receives this clamped `h0`,
+the selected `--beta` (default `1.2`), and `min_edge`. It reduces target
+lengths as needed to meet its face-gradient limit and leaves the original
+mode untouched. The solver requires an IPOPT-enabled build. The initial
+SDF and curvature values are computed once; Chen does not recompute them.
+
 ## SDF and input contract
 
 `CGAL::sdf_values(mesh, face_map, cone_angle, rays, false)` supplies raw SDF.
@@ -90,12 +99,14 @@ inputs; those inputs will need separate attention before using this strict mode.
 - `--sdf-cone-angle DEGREES`: full cone opening angle, strictly in `(0,180)`,
   default 120. The implementation converts degrees to radians for CGAL.
 - The two SDF options are rejected with other field modes.
+- `--beta B` applies to the `-chen` mode and must be finite and greater than 1.
 - Existing epsilon selection and min/max-edge options apply. Supplying epsilon
   explicitly makes future comparisons easier to reproduce.
 - `--iterations 0` constructs and exports the initial field without remeshing.
 - `--remesh-backend custom --remesh-diagnostics` enables inherited snapshots.
 - Automatic output names use compact parameter labels such as
   `__sdf-h0__e-...__mn-...__mx-...__r25__a120__i5__q3__p1__f0__b-custom`.
+  The Chen mode uses `__sdf-h0-chen` and adds `__beta-...`.
   Numeric values retain the existing 10-significant-digit formatter; enabling
   feature preservation adds its angle. This shortens the result directory too,
   since field files and remesh snapshots live below it.
@@ -104,9 +115,9 @@ With field prefix `result/field`, initial diagnostics are:
 
 | File | Contents |
 | --- | --- |
-| `field.csv`, `field.ply` | Initial vertex curvature, target length (`h0`), thickness, vertex area, local epsilon, dimensionless epsilon*kappa, limiter and clipping flags |
+| `field.csv`, `field.ply` | Initial vertex curvature, target length, thickness, vertex area, local epsilon, dimensionless epsilon*kappa, limiter and clipping flags. In Chen mode, `target_length` is corrected and `raw_target_length` is the original `h0`. |
 | `field_sdf_faces.csv` | Original face descriptor, centroid, area, raw thickness, validity flag |
-| `field_sdf.json` | SDF parameters, units, transfer/invalid-value policy, Chen status, area-weighted thickness-limited fraction |
+| `field_sdf.json` | SDF parameters, units, transfer/invalid-value policy, Chen status and correction summary, area-weighted thickness-limited fraction |
 
 Limiter flags include ties; they do not form mutually exclusive categories.
 Clipping flags are independent of epsilon-limit flags. Face validity is 1 on
@@ -119,15 +130,17 @@ requested independently. The remesh snapshot manifest includes SDF parameters.
 Run in this worktree (the build directory belongs to this checkout):
 
 ```powershell
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=E:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake -DRAR_BUILD_FIELD_VIEWER=OFF -DRAR_ENABLE_IPOPT=OFF
-cmake --build build --config Release --target rar_cgal rar_sdf_thickness_test rar_smoke_test rar_chen_continuation_test rar_custom_remesh_test -j 2
-ctest --test-dir build -C Release --output-on-failure
+cmake -S . -B build-chen -DCMAKE_TOOLCHAIN_FILE=E:/dev/vcpkg/scripts/buildsystems/vcpkg.cmake -DRAR_BUILD_FIELD_VIEWER=OFF -DRAR_ENABLE_IPOPT=ON
+cmake --build build-chen --config Release --target rar_cgal rar_sdf_thickness_test rar_smoke_test rar_chen_continuation_test rar_custom_remesh_test -j 2
+ctest --test-dir build-chen -C Release --output-on-failure
 ```
 
 The new tests use small synthetic fixtures to check the formula and clipping,
 flat limit, physical scaling, analytic slab thickness with near-normal rays,
 face-to-vertex transfer, invalid geometry/parameters, initial exports, CLI
 naming, automatic epsilon, and parity between backends and observer settings.
+The CLI tests also check Chen mode selection, initial and corrected exports,
+metadata, bounds, and backend parity.
 These are functional checks, not comparative remeshing experiments.
 
 Reference: [CGAL 6.1.1 SDF manual](https://doc.cgal.org/6.1.1/Surface_mesh_segmentation/index.html).
