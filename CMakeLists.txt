@@ -107,6 +107,12 @@ if(BUILD_TESTING)
     target_include_directories(wang2019_smoke_test PRIVATE include)
     target_link_libraries(wang2019_smoke_test PRIVATE CGAL::CGAL)
     add_test(NAME wang2019_smoke_test COMMAND wang2019_smoke_test)
+    add_test(NAME wang2019_cli_test
+        COMMAND wang2019_remesh
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/wang2019_tetra.off"
+            "${CMAKE_CURRENT_BINARY_DIR}/wang2019_cli_output.off"
+            --rounds 3 --budget 0.2 --no-features)
+
     add_executable(rar_chen_continuation_test tests/chen_continuation.cpp)
     target_include_directories(rar_chen_continuation_test PRIVATE include)
     add_test(NAME rar_chen_continuation_test COMMAND rar_chen_continuation_test)
