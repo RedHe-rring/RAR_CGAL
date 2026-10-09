@@ -54,6 +54,34 @@ int main() {
         }
         if (!collapsed) throw std::runtime_error("No legal test collapse");
     }
+    // Exercise the actual angle-driven insertion policy, not just raw Euler.
+    {
+        Mesh probe(mesh);
+        Tree reference(faces(probe).first, faces(probe).second, probe);
+        reference.accelerate_distance_queries();
+        Options insertion;
+        insertion.max_angle = 86.0;
+        insertion.protect_features = false;
+        insertion.project = false;
+        RejectionStats reasons;
+        std::size_t angle_flips = 0;
+        const auto before_v = probe.number_of_vertices();
+        std::vector<Face> candidates;
+        for (const Face face : faces(probe)) candidates.push_back(face);
+        bool success = false;
+        for (const Face face : candidates) {
+            if (insert_at_large_angle(probe, face, reference,
+                                      insertion, {}, &reasons, &angle_flips)) {
+                success = true;
+                break;
+            }
+        }
+        if (!success)
+            throw std::runtime_error("No successful angle-driven tetra insertion");
+        if (probe.number_of_vertices() != before_v + 1 ||
+            !probe.is_valid() || !CGAL::is_triangle_mesh(probe))
+            throw std::runtime_error("Angle-driven insert damaged the mesh");
+    }
     Options o;
     o.rounds = 3;
     o.smoothing_steps = 1;
