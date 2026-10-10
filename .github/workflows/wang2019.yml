@@ -1,0 +1,20 @@
+name: Wang2019 prototype C++ smoke
+on:
+  push:
+    branches:
+      - feature/wang2019-angle-remeshing
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CGAL and Eigen
+        run: sudo apt-get update && sudo apt-get install -y libcgal-dev libeigen3-dev
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DRAR_ENABLE_IPOPT=OFF -DBUILD_TESTING=ON
+      - name: Build Wang2019 only
+        run: cmake --build build --target wang2019_remesh wang2019_smoke_test -j2
+      - name: Run Wang2019 test
+        run: ctest --test-dir build -R "wang2019_" -V --output-on-failure

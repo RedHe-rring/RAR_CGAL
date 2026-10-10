@@ -8,6 +8,15 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(CGAL REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+# Some CGAL/Eigen CMake module combinations report Eigen3 as found without
+# defining the imported target. Keep existing target_link_libraries portable.
+if(NOT TARGET Eigen3::Eigen)
+    find_path(RAR_EIGEN3_INCLUDE_DIR Eigen/Core PATH_SUFFIXES eigen3 REQUIRED)
+    add_library(Eigen3::Eigen INTERFACE IMPORTED)
+    set_target_properties(Eigen3::Eigen PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${RAR_EIGEN3_INCLUDE_DIR}")
+endif()
+
 option(
     RAR_BUILD_FIELD_VIEWER
     "Build the interactive Polyscope sizing-field viewer"
@@ -71,6 +80,17 @@ if(RAR_ENABLE_IPOPT)
     endif()
 endif()
 
+# Standalone angle-driven Wang2019 postprocessor. Builds without IPOPT.
+add_executable(wang2019_remesh src/wang2019_main.cpp)
+target_include_directories(wang2019_remesh PRIVATE include)
+target_link_libraries(wang2019_remesh PRIVATE CGAL::CGAL)
+
+if(MSVC)
+    target_compile_options(wang2019_remesh PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(wang2019_remesh PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 if(MSVC)
     target_compile_options(rar_cgal PRIVATE /W4 /permissive-)
 else()
@@ -83,6 +103,16 @@ if(BUILD_TESTING)
     target_include_directories(rar_smoke_test PRIVATE include)
     target_link_libraries(rar_smoke_test PRIVATE CGAL::CGAL Eigen3::Eigen)
     add_test(NAME rar_smoke_test COMMAND rar_smoke_test)
+    add_executable(wang2019_smoke_test tests/wang2019_smoke.cpp)
+    target_include_directories(wang2019_smoke_test PRIVATE include)
+    target_link_libraries(wang2019_smoke_test PRIVATE CGAL::CGAL)
+    add_test(NAME wang2019_smoke_test COMMAND wang2019_smoke_test)
+    add_test(NAME wang2019_cli_test
+        COMMAND wang2019_remesh
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/data/wang2019_tetra.off"
+            "${CMAKE_CURRENT_BINARY_DIR}/wang2019_cli_output.off"
+            --rounds 3 --budget 0.2 --no-features)
+
     add_executable(rar_chen_continuation_test tests/chen_continuation.cpp)
     target_include_directories(rar_chen_continuation_test PRIVATE include)
     add_test(NAME rar_chen_continuation_test COMMAND rar_chen_continuation_test)
