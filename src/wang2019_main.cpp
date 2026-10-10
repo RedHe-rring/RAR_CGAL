@@ -72,6 +72,7 @@ int main(int argc, char** argv) {
                   << "  F: " << s.faces_before << " -> " << s.faces_after
                   << "\n  rolled-back rounds: " << s.rolled_back_rounds
                   << "\n  inserts: " << s.insertions
+                  << " feature_splits: " << s.feature_splits
                   << " collapses: " << s.collapses << " flips: " << s.flips
                   << "\n  min/max angle: " << s.angles.min << " / " << s.angles.max
                   << "\n  below/above bound: " << s.min_angle_violations
