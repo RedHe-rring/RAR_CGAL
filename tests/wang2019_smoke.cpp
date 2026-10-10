@@ -90,6 +90,54 @@ int main() {
             std::cout << " " << cause_name(i) << "=" << reasons.rejected[i];
         std::cout << '\n';
     }
+    // Fig. 4(d) partial support: bisect an interior sharp longest edge
+    // without destroying the two-sided crease or introducing flipped faces.
+    {
+        Mesh crease;
+        const Vertex ca=crease.add_vertex(Point(-2.0,0.0,0.0));
+        const Vertex cb=crease.add_vertex(Point( 2.0,0.0,0.0));
+        const Vertex cc=crease.add_vertex(Point( 0.0,0.2,0.0));
+        const Vertex cd=crease.add_vertex(Point( 0.0,-0.2,0.5));
+        const Face fa=crease.add_face(ca,cb,cc);
+        const Face fb=crease.add_face(cb,ca,cd);
+        if(fa==Mesh::null_face() || fb==Mesh::null_face())
+            throw std::runtime_error("Cannot construct folded crease patch");
+        Options crease_options;
+        crease_options.max_angle=90.0;
+        crease_options.feature_angle=50.0;
+        crease_options.protect_features=true;
+        crease_options.project=false;
+        const Halfedge old_crease=crease.halfedge(ca,cb);
+        if(old_crease==Mesh::null_halfedge() ||
+           !is_feature_edge(crease,edge(old_crease,crease),crease_options))
+            throw std::runtime_error("Crease fixture was not detected as sharp");
+        Tree reference(faces(crease).first,faces(crease).second,crease);
+        reference.accelerate_distance_queries();
+        const auto n0=crease.number_of_vertices(),t0=crease.number_of_faces();
+        RejectionStats stats;
+        if(!insert_at_large_angle(crease,fa,reference,crease_options,{},&stats))
+            throw std::runtime_error("Failed Fig. 4(d) interior crease bisection");
+        if(crease.number_of_vertices()!=n0+1 ||
+           crease.number_of_faces()!=t0+2 ||
+           !crease.is_valid() || !CGAL::is_triangle_mesh(crease))
+            throw std::runtime_error("Fig. 4(d) crease split corrupted topology");
+        Vertex vm=Mesh::null_vertex();
+        for(const Vertex v : vertices(crease))
+            if(v!=ca && v!=cb && v!=cc && v!=cd) vm=v;
+        if(vm==Mesh::null_vertex())
+            throw std::runtime_error("Fig. 4(d) split vertex missing");
+        if(crease.halfedge(ca,cb)!=Mesh::null_halfedge())
+            throw std::runtime_error("Original feature edge was not split");
+        const Halfedge ah=crease.halfedge(ca,vm);
+        const Halfedge bh=crease.halfedge(vm,cb);
+        if(ah==Mesh::null_halfedge() || bh==Mesh::null_halfedge() ||
+           !is_feature_edge(crease,edge(ah,crease),crease_options) ||
+           !is_feature_edge(crease,edge(bh,crease),crease_options))
+            throw std::runtime_error("Subdivided feature edges lost their crease");
+        if(norm2(crease.point(vm)-CGAL::midpoint(
+             crease.point(ca),crease.point(cb)))>1e-24)
+            throw std::runtime_error("Feature midpoint departed input polyline");
+    }
     // An interior obtuse patch must exercise the actual angle-driven insertion
     // policy. Unlike the tetrahedron, its interior vertices have legal
     // alternative local connectivities.
