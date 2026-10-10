@@ -265,8 +265,11 @@ int main() {
         const Statistics actual=run(grid,full);
         const auto delta_v=static_cast<std::ptrdiff_t>(actual.vertices_after)-
                            static_cast<std::ptrdiff_t>(actual.vertices_before);
+        const auto delta_f=static_cast<std::ptrdiff_t>(actual.faces_after)-
+                           static_cast<std::ptrdiff_t>(actual.faces_before);
         if (delta_v!=static_cast<std::ptrdiff_t>(actual.insertions)-
                      static_cast<std::ptrdiff_t>(actual.collapses) ||
+            delta_f!=2*delta_v-static_cast<std::ptrdiff_t>(actual.boundary_splits) ||
             !grid.is_valid() || !CGAL::is_triangle_mesh(grid))
             throw std::runtime_error("Staged pipeline violated live vertex accounting");
         Options balanced=full;
@@ -275,7 +278,9 @@ int main() {
         const Statistics balanced_stats=run(balanced_grid,balanced);
         if (!balanced_grid.is_valid() || !CGAL::is_triangle_mesh(balanced_grid) ||
             balanced_stats.vertices_before!=balanced_stats.vertices_after ||
-            balanced_stats.faces_before!=balanced_stats.faces_after ||
+            static_cast<std::ptrdiff_t>(balanced_stats.faces_after)-
+               static_cast<std::ptrdiff_t>(balanced_stats.faces_before)!=
+                 -static_cast<std::ptrdiff_t>(balanced_stats.boundary_splits) ||
             balanced_stats.insertions!=balanced_stats.collapses)
             throw std::runtime_error("Strict-N rollback/retry failed");
         std::cout << "Grid pipeline PASS, inserts=" << actual.insertions
