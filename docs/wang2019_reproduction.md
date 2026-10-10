@@ -12,15 +12,15 @@ Implemented:
 - Selection of small-angle triangles and shortest-edge collapse, conditioned on Euler's link condition, simulated triangle normals/areas, and local minimum-angle improvement.
 - Two valence-reducing edge-flip passes per round (target valence 6 for unconstrained interiors), following the Algorithm 1 stage ordering.
 - Area-weighted neighboring **triangle-centroid** tangential smoothing (Eq. 1-inspired, area weights are our choice), performed after both operation stages, with nearest-point projection to the **initial input mesh** using a CGAL AABB tree.
-- Boundary / sharp-corner freezing (a conservative stand-in for the paper's feature-specific operations).
+- Conservative sharp-corner protection for collapse/flip/smoothing, plus **first-step Fig. 4(d)** midpoint bisection of a longest interior crease edge **or** boundary edge. Exact subsequent Fig. 4(c) polygon/pentagon operations are still missing.
 - Per-round angle/violation and vertex-count diagnostics, rejected-operation reason counters, per-operation V/F assertions, and synthetic C++ smoke tests.
 - Default strict-N transactional rounds: if legal collapses cannot balance accepted insertions, **retry the round with half the batch size k** until a balanced batch is found (or k reaches 1); otherwise restore the input mesh for that round. This is a safeguard, not the paper's original strategy. Use `--allow-drift` to disable it.
 
 Still missing for a paper-level reproduction:
-1. Match **all** cases of Fig. 4 precisely: currently only a simple split plus a locally best legal outer-edge flip is attempted; boundary/feature configurations and the exact affected-angle objective remain incomplete.
+1. Match **all** cases of Fig. 4 precisely: smooth cases use split + optional candidate flip; Fig. 4(d) now supports the first constrained-edge bisection step. The Fig. 4(c) follow-up and Fig. 4(e,f) still require implementation. The exact affected-angle objective remains incomplete.
 2. Match the paper's exact k adaptation, stopping conditions, smoothing weights, and efficient local 2–3-ring scheduling. Our `--k-ratio 0.2` uses the 20% proportion stated for the paper's timing experiment; `--k` specifies an explicit stage budget. `--budget` is a deprecated alias for `--k-ratio`.
 3. Reproduce initial sizing-field construction for an explicitly requested target N. Strict-N currently preserves the input's live vertex count by rolling back an unbalanced round; it is not a faithful recovery strategy when collapse options run out.
-4. Implement the paper's own feature handling rather than freezing nearby vertices.
+4. Implement the paper's tagged feature-edge representation and full feature-dependent connectivity choices; current features are inferred by current face dihedral, and sharp vertices remain frozen during smoothing/other operations.
 5. Add quantitative approximation-error / intersection checks; nearest-point projection and local normal guards do **not** guarantee global geometric fidelity or absence of self-intersection.
 6. Run the actual paper's benchmark meshes and compare distributions/timings against published figures.
 
@@ -75,3 +75,15 @@ Implementation location: `include/rar/Wang2019Remesher.h`, standalone CLI `src/w
 - The insertion evaluator excludes candidate flips that would reconnect the new midpoint to one of the original four quadrilateral corners (which would duplicate an existing edge).
 - New deterministic planar-grid testing requires at least one successful large-angle insertion, beyond just checking that a C++ binary runs.
 - **Unresolved:** exact Fig. 4(a–f) cases, precise insertion acceptance and paper-specific feature handling; this executable remains a research prototype rather than an exact reproduction.
+
+## Fig. 4(d): constrained longest-edge bisection (partial, CGAL Euler)
+
+When the triangle's **longest edge** is an interior sharp edge (dihedral above `--feature-angle`) or is on the mesh boundary, the prototype can now bisect that edge at its unprojected midpoint and retriangulate the incident faces. This is only the **first reduction operation** described in Fig. 4(d); the subsequent Fig. 4(c) polygon/pentagon insertion is not yet implemented.
+
+- Interior crease split: live-element delta `+1 vertex / +2 faces`.
+- Boundary edge split: live-element delta `+1 vertex / +1 face`.
+- Each candidate must improve the targeted triangle's maximal angle; geometry inversion checks are applied to incident faces.
+- `feature_splits` and `boundary_splits` are printed separately. Under strict-N, paired interior collapse after a boundary split keeps vertex count constant but may change face count by `-1`; this is expected and is validated by `ΔF = 2ΔV - boundary_splits`.
+- Folded-crease and open-boundary regression tests verify topology, midpoint geometry, and preserved sharp/boundary edges.
+
+**Caveat:** The paper assumes pre-tagged feature edges; the prototype uses *dynamic dihedral detection*, and has not yet implemented the exact feature-case configurations or a persistent user-provided feature-edge map. This step should not be interpreted as faithful Fig. 4(d) reproduction or as an error-bounded result.
