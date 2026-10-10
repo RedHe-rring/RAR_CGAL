@@ -67,6 +67,7 @@ struct Angles {
 struct Statistics {
     std::size_t insertions = 0;
     std::size_t collapses = 0;
+    std::size_t feature_splits = 0; // interior crease bisections (Fig. 4(d) partial)
     std::size_t flips = 0;
     std::size_t rolled_back_rounds = 0;
     std::size_t vertices_before = 0;
@@ -275,7 +276,8 @@ inline bool bisect_longest_interior_feature_edge(
 inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
                                   const Options& opt, const std::set<Vertex>&,
                                   RejectionStats* reasons = nullptr,
-                                  std::size_t* successful_angle_flips = nullptr) {
+                                  std::size_t* successful_angle_flips = nullptr,
+                                  std::size_t* successful_feature_splits = nullptr) {
     auto reject = [&](RejectCause cause) {
         if (reasons) reasons->record(cause);
         return false;
@@ -292,9 +294,13 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
     const Halfedge ho=opposite(chosen,m);
     if (is_border(chosen,m) || is_border(ho,m))
         return reject(RejectCause::boundary);
-    if (is_feature_edge(m,edge(chosen,m),opt))
-        return bisect_longest_interior_feature_edge(
+    if (is_feature_edge(m,edge(chosen,m),opt)) {
+        const bool did_split=bisect_longest_interior_feature_edge(
             m,f,chosen,opt,reasons);
+        if(did_split && successful_feature_splits)
+            ++*successful_feature_splits;
+        return did_split;
+    }
     const Vertex va=source(chosen,m),vb=target(chosen,m),
                  vc=target(next(chosen,m),m),vd=target(next(ho,m),m);
     const Point a=m.point(va),b=m.point(vb),
@@ -653,7 +659,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
         const Mesh round_start=opt.strict_vertex_count ? Mesh(mesh) : Mesh();
         std::size_t trial_k=base_k;
         bool committed=false;
-        std::size_t inserted=0, collapsed=0, flipped=0, used_k=0;
+        std::size_t inserted=0, collapsed=0, flipped=0, used_k=0, used_feature_splits=0;
         RejectionStats final_split_rejections, final_collapse_rejections;
         double effective_min_angle=opt.min_angle;
 
@@ -663,7 +669,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
             const std::size_t vertices_before=mesh.number_of_vertices();
             const std::size_t faces_before=mesh.number_of_faces();
             RejectionStats split_rejections, collapse_rejections;
-            std::size_t added=0, removed=0, angle_flips=0;
+            std::size_t added=0, removed=0, angle_flips=0, feature_splits=0;
 
             std::vector<Face> large;
             for (const Face f : faces(mesh))
@@ -675,7 +681,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
             for (const Face f : large) {
                 if (added>=trial_k) break;
                 if (insert_at_large_angle(mesh,f,reference,opt,fixed,
-                                          &split_rejections,&angle_flips))
+                                          &split_rejections,&angle_flips,&feature_splits))
                     ++added;
             }
             const std::size_t first_flips=valence_stage();
@@ -721,6 +727,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
                 inserted=added;
                 collapsed=removed;
                 flipped=first_flips+second_flips+angle_flips;
+                used_feature_splits=feature_splits;
                 used_k=trial_k;
                 effective_min_angle=raised_beta;
                 final_split_rejections=split_rejections;
@@ -751,6 +758,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
 
         total.insertions+=inserted;
         total.collapses+=collapsed;
+        total.feature_splits+=used_feature_splits;
         total.flips+=flipped;
         const Statistics current=analyze(mesh,opt);
         if (opt.verbose) {
@@ -759,6 +767,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
                       << " insert=" << inserted
                       << " collapse=" << collapsed
                       << " flip=" << flipped
+                      << " feature_splits=" << used_feature_splits
                       << " V=" << current.vertices_after
                       << " min_angle=" << current.angles.min
                       << " max_angle=" << current.angles.max
