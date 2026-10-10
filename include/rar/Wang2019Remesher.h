@@ -221,6 +221,57 @@ inline double large_angle_violation(const Point& a, const Point& b,
     return error*error;
 }
 
+// Sec. 4.2.1 / Fig. 4(d), first reduction step for a tagged *interior*
+// feature edge: bisect the longest sharp edge, leaving its two incident
+// piecewise-linear surface triangles geometrically unchanged.
+// Fig. 4(d) then applies the Fig. 4(c) case; that subsequent pentagon
+// operation is NOT implemented here yet. The adjacent split faces can be
+// selected in later optimization rounds instead.
+inline bool bisect_longest_interior_feature_edge(
+        Mesh& m, Face target_face, Halfedge h,
+        const Options& opt, RejectionStats* reasons) {
+    auto reject=[&](RejectCause why) {
+        if(reasons) reasons->record(why);
+        return false;
+    };
+    const Halfedge ho=opposite(h,m);
+    if(is_border(h,m) || is_border(ho,m))
+        return reject(RejectCause::boundary);
+    if(!is_feature_edge(m,edge(h,m),opt))
+        return reject(RejectCause::feature);
+    const Vertex va=source(h,m),vb=target(h,m);
+    const Vertex vc=target(next(h,m),m);
+    const Vertex vd=target(next(ho,m),m);
+    const Point a=m.point(va),b=m.point(vb),
+                c=m.point(vc),d=m.point(vd);
+    const Point mid=CGAL::midpoint(a,b);
+    const Vector n0=normal(a,b,c),n1=normal(b,a,d);
+    if(!acceptable_triangle(a,mid,c,n0) ||
+       !acceptable_triangle(mid,b,c,n0) ||
+       !acceptable_triangle(b,mid,d,n1) ||
+       !acceptable_triangle(mid,a,d,n1))
+        return reject(RejectCause::geometry);
+
+    // Limit the operation to a locally useful split. Exact Fig. 4(d) would
+    // continue with pentagon insertion; this conservative intermediate
+    // operation cannot by itself guarantee final bounds.
+    const double original=angles_of(m,target_face).max;
+    const double after=(std::max)(
+        triangle_angles(a,mid,c).max,triangle_angles(mid,b,c).max);
+    if(!(after<original-1e-7))
+        return reject(RejectCause::no_improvement);
+
+    const auto oldV=m.number_of_vertices(),oldF=m.number_of_faces();
+    const Face f0=face(h,m),f1=face(ho,m);
+    const Halfedge new_h=CGAL::Euler::split_edge(h,m);
+    const Vertex inserted=target(new_h,m);
+    m.point(inserted)=mid;
+    if(!split_quad(m,f0,inserted) || !split_quad(m,f1,inserted))
+        throw std::runtime_error("Wang2019 feature split left a nontriangular face");
+    verify_delta(m,oldV,oldF,1,2,"interior feature split");
+    return true;
+}
+
 inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
                                   const Options& opt, const std::set<Vertex>&,
                                   RejectionStats* reasons = nullptr,
@@ -242,7 +293,8 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
     if (is_border(chosen,m) || is_border(ho,m))
         return reject(RejectCause::boundary);
     if (is_feature_edge(m,edge(chosen,m),opt))
-        return reject(RejectCause::feature);
+        return bisect_longest_interior_feature_edge(
+            m,f,chosen,opt,reasons);
     const Vertex va=source(chosen,m),vb=target(chosen,m),
                  vc=target(next(chosen,m),m),vd=target(next(ho,m),m);
     const Point a=m.point(va),b=m.point(vb),
