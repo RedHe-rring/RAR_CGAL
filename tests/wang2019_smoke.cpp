@@ -90,6 +90,44 @@ int main() {
             std::cout << " " << cause_name(i) << "=" << reasons.rejected[i];
         std::cout << '\n';
     }
+    // Fig. 4(d) also applies when the longest edge is on the open boundary.
+    // Splitting a border edge creates +1 vertex / +1 triangle, not +2 faces.
+    {
+        Mesh boundary_mesh;
+        const Vertex ba=boundary_mesh.add_vertex(Point(-2.0,0.0,0.0));
+        const Vertex bb=boundary_mesh.add_vertex(Point( 2.0,0.0,0.0));
+        const Vertex bc=boundary_mesh.add_vertex(Point( 0.0,0.2,0.0));
+        const Face bf=boundary_mesh.add_face(ba,bb,bc);
+        if(bf==Mesh::null_face())
+            throw std::runtime_error("Cannot construct boundary obtuse patch");
+        Tree reference(faces(boundary_mesh).first,
+                       faces(boundary_mesh).second,boundary_mesh);
+        reference.accelerate_distance_queries();
+        Options boundary_options;
+        boundary_options.max_angle=90.0;
+        boundary_options.protect_features=true;
+        boundary_options.project=false;
+        const auto v_before=boundary_mesh.number_of_vertices();
+        const auto f_before=boundary_mesh.number_of_faces();
+        std::size_t boundary_splits=0;
+        RejectionStats rejected;
+        if(!insert_at_large_angle(boundary_mesh,bf,reference,boundary_options,
+                                   {},&rejected,nullptr,nullptr,&boundary_splits))
+            throw std::runtime_error("Failed Fig. 4(d) boundary split");
+        if(boundary_splits!=1 ||
+           boundary_mesh.number_of_vertices()!=v_before+1 ||
+           boundary_mesh.number_of_faces()!=f_before+1 ||
+           !boundary_mesh.is_valid() || !CGAL::is_triangle_mesh(boundary_mesh))
+            throw std::runtime_error("Border edge split has invalid V/F change");
+        Vertex vm=Mesh::null_vertex();
+        for(const Vertex v : vertices(boundary_mesh))
+            if(v!=ba && v!=bb && v!=bc) vm=v;
+        if(vm==Mesh::null_vertex() || !boundary_mesh.is_border(vm) ||
+           boundary_mesh.halfedge(ba,bb)!=Mesh::null_halfedge() ||
+           boundary_mesh.halfedge(ba,vm)==Mesh::null_halfedge() ||
+           boundary_mesh.halfedge(vm,bb)==Mesh::null_halfedge())
+            throw std::runtime_error("Border split did not preserve boundary chain");
+    }
     // Fig. 4(d) partial support: bisect an interior sharp longest edge
     // without destroying the two-sided crease or introducing flipped faces.
     {
