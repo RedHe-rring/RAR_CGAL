@@ -68,6 +68,7 @@ struct Statistics {
     std::size_t insertions = 0;
     std::size_t collapses = 0;
     std::size_t feature_splits = 0; // interior crease bisections (Fig. 4(d) partial)
+    std::size_t boundary_splits = 0; // boundary-edge bisections (+1F instead of +2F)
     std::size_t flips = 0;
     std::size_t rolled_back_rounds = 0;
     std::size_t vertices_before = 0;
@@ -222,13 +223,11 @@ inline double large_angle_violation(const Point& a, const Point& b,
     return error*error;
 }
 
-// Sec. 4.2.1 / Fig. 4(d), first reduction step for a tagged *interior*
-// feature edge: bisect the longest sharp edge, leaving its two incident
-// piecewise-linear surface triangles geometrically unchanged.
-// Fig. 4(d) then applies the Fig. 4(c) case; that subsequent pentagon
-// operation is NOT implemented here yet. The adjacent split faces can be
-// selected in later optimization rounds instead.
-inline bool bisect_longest_interior_feature_edge(
+// Sec. 4.2.1 / Fig. 4(d), first reduction step for a longest edge
+// constrained by either a crease or a mesh boundary. The midpoint remains
+// exactly on the original piecewise-linear edge. The subsequent Fig. 4(c)
+// pentagon insertion is not implemented yet; later iterations revisit faces.
+inline bool bisect_longest_constrained_edge(
         Mesh& m, Face target_face, Halfedge h,
         const Options& opt, RejectionStats* reasons) {
     auto reject=[&](RejectCause why) {
@@ -236,26 +235,28 @@ inline bool bisect_longest_interior_feature_edge(
         return false;
     };
     const Halfedge ho=opposite(h,m);
-    if(is_border(h,m) || is_border(ho,m))
-        return reject(RejectCause::boundary);
-    if(!is_feature_edge(m,edge(h,m),opt))
+    if(is_border(h,m)) return reject(RejectCause::topology);
+    const bool boundary=is_border(ho,m);
+    if(!boundary && !is_feature_edge(m,edge(h,m),opt))
         return reject(RejectCause::feature);
     const Vertex va=source(h,m),vb=target(h,m);
     const Vertex vc=target(next(h,m),m);
-    const Vertex vd=target(next(ho,m),m);
-    const Point a=m.point(va),b=m.point(vb),
-                c=m.point(vc),d=m.point(vd);
+    const Point a=m.point(va),b=m.point(vb),c=m.point(vc);
     const Point mid=CGAL::midpoint(a,b);
-    const Vector n0=normal(a,b,c),n1=normal(b,a,d);
+    const Vector n0=normal(a,b,c);
     if(!acceptable_triangle(a,mid,c,n0) ||
-       !acceptable_triangle(mid,b,c,n0) ||
-       !acceptable_triangle(b,mid,d,n1) ||
-       !acceptable_triangle(mid,a,d,n1))
+       !acceptable_triangle(mid,b,c,n0))
         return reject(RejectCause::geometry);
 
-    // Limit the operation to a locally useful split. Exact Fig. 4(d) would
-    // continue with pentagon insertion; this conservative intermediate
-    // operation cannot by itself guarantee final bounds.
+    if(!boundary) {
+        const Vertex vd=target(next(ho,m),m);
+        const Point d=m.point(vd);
+        const Vector n1=normal(b,a,d);
+        if(!acceptable_triangle(b,mid,d,n1) ||
+           !acceptable_triangle(mid,a,d,n1))
+            return reject(RejectCause::geometry);
+    }
+    // This interim step must improve the targeted large-angle triangle.
     const double original=angles_of(m,target_face).max;
     const double after=(std::max)(
         triangle_angles(a,mid,c).max,triangle_angles(mid,b,c).max);
@@ -263,13 +264,16 @@ inline bool bisect_longest_interior_feature_edge(
         return reject(RejectCause::no_improvement);
 
     const auto oldV=m.number_of_vertices(),oldF=m.number_of_faces();
-    const Face f0=face(h,m),f1=face(ho,m);
+    const Face f0=face(h,m);
+    const Face f1=boundary ? Mesh::null_face() : face(ho,m);
     const Halfedge new_h=CGAL::Euler::split_edge(h,m);
     const Vertex inserted=target(new_h,m);
     m.point(inserted)=mid;
-    if(!split_quad(m,f0,inserted) || !split_quad(m,f1,inserted))
-        throw std::runtime_error("Wang2019 feature split left a nontriangular face");
-    verify_delta(m,oldV,oldF,1,2,"interior feature split");
+    if(!split_quad(m,f0,inserted) ||
+       (!boundary && !split_quad(m,f1,inserted)))
+        throw std::runtime_error("Wang2019 constrained split left nontriangular faces");
+    verify_delta(m,oldV,oldF,1,boundary ? 1 : 2,
+                 boundary ? "boundary split" : "interior feature split");
     return true;
 }
 
@@ -277,7 +281,8 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
                                   const Options& opt, const std::set<Vertex>&,
                                   RejectionStats* reasons = nullptr,
                                   std::size_t* successful_angle_flips = nullptr,
-                                  std::size_t* successful_feature_splits = nullptr) {
+                                  std::size_t* successful_feature_splits = nullptr,
+                                  std::size_t* successful_boundary_splits = nullptr) {
     auto reject = [&](RejectCause cause) {
         if (reasons) reasons->record(cause);
         return false;
@@ -292,12 +297,13 @@ inline bool insert_at_large_angle(Mesh& m, Face f, const Tree&,
         if (len2>longest) { longest=len2; chosen=h; }
     }
     const Halfedge ho=opposite(chosen,m);
-    if (is_border(chosen,m) || is_border(ho,m))
-        return reject(RejectCause::boundary);
-    if (is_feature_edge(m,edge(chosen,m),opt)) {
-        const bool did_split=bisect_longest_interior_feature_edge(
+    const bool boundary=is_border(chosen,m) || is_border(ho,m);
+    if (boundary || is_feature_edge(m,edge(chosen,m),opt)) {
+        const bool did_split=bisect_longest_constrained_edge(
             m,f,chosen,opt,reasons);
-        if(did_split && successful_feature_splits)
+        if (did_split && boundary && successful_boundary_splits)
+            ++*successful_boundary_splits;
+        if (did_split && !boundary && successful_feature_splits)
             ++*successful_feature_splits;
         return did_split;
     }
@@ -659,7 +665,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
         const Mesh round_start=opt.strict_vertex_count ? Mesh(mesh) : Mesh();
         std::size_t trial_k=base_k;
         bool committed=false;
-        std::size_t inserted=0, collapsed=0, flipped=0, used_k=0, used_feature_splits=0;
+        std::size_t inserted=0, collapsed=0, flipped=0, used_k=0, used_feature_splits=0, used_boundary_splits=0;
         RejectionStats final_split_rejections, final_collapse_rejections;
         double effective_min_angle=opt.min_angle;
 
@@ -669,7 +675,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
             const std::size_t vertices_before=mesh.number_of_vertices();
             const std::size_t faces_before=mesh.number_of_faces();
             RejectionStats split_rejections, collapse_rejections;
-            std::size_t added=0, removed=0, angle_flips=0, feature_splits=0;
+            std::size_t added=0, removed=0, angle_flips=0, feature_splits=0, boundary_splits=0;
 
             std::vector<Face> large;
             for (const Face f : faces(mesh))
@@ -681,7 +687,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
             for (const Face f : large) {
                 if (added>=trial_k) break;
                 if (insert_at_large_angle(mesh,f,reference,opt,fixed,
-                                          &split_rejections,&angle_flips,&feature_splits))
+                                          &split_rejections,&angle_flips,&feature_splits,&boundary_splits))
                     ++added;
             }
             const std::size_t first_flips=valence_stage();
@@ -719,7 +725,8 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
                                  static_cast<std::ptrdiff_t>(faces_before);
             const auto expected_dv=static_cast<std::ptrdiff_t>(added)-
                                    static_cast<std::ptrdiff_t>(removed);
-            if (actual_dv!=expected_dv || actual_df!=2*expected_dv)
+            if (actual_dv!=expected_dv ||
+                actual_df!=2*expected_dv-static_cast<std::ptrdiff_t>(boundary_splits))
                 throw std::runtime_error("Wang2019: iteration V/F delta mismatch");
 
             if (!opt.strict_vertex_count || added==removed) {
@@ -728,6 +735,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
                 collapsed=removed;
                 flipped=first_flips+second_flips+angle_flips;
                 used_feature_splits=feature_splits;
+                used_boundary_splits=boundary_splits;
                 used_k=trial_k;
                 effective_min_angle=raised_beta;
                 final_split_rejections=split_rejections;
@@ -759,6 +767,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
         total.insertions+=inserted;
         total.collapses+=collapsed;
         total.feature_splits+=used_feature_splits;
+        total.boundary_splits+=used_boundary_splits;
         total.flips+=flipped;
         const Statistics current=analyze(mesh,opt);
         if (opt.verbose) {
@@ -768,6 +777,7 @@ inline Statistics run(Mesh& mesh, const Options& opt) {
                       << " collapse=" << collapsed
                       << " flip=" << flipped
                       << " feature_splits=" << used_feature_splits
+                      << " boundary_splits=" << used_boundary_splits
                       << " V=" << current.vertices_after
                       << " min_angle=" << current.angles.min
                       << " max_angle=" << current.angles.max
