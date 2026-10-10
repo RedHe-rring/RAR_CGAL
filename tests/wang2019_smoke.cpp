@@ -115,9 +115,11 @@ int main() {
         reference.accelerate_distance_queries();
         const auto n0=crease.number_of_vertices(),t0=crease.number_of_faces();
         RejectionStats stats;
-        if(!insert_at_large_angle(crease,fa,reference,crease_options,{},&stats))
+        std::size_t feature_splits=0;
+        if(!insert_at_large_angle(crease,fa,reference,crease_options,{},
+                                  &stats,nullptr,&feature_splits))
             throw std::runtime_error("Failed Fig. 4(d) interior crease bisection");
-        if(crease.number_of_vertices()!=n0+1 ||
+        if(feature_splits!=1 || crease.number_of_vertices()!=n0+1 ||
            crease.number_of_faces()!=t0+2 ||
            !crease.is_valid() || !CGAL::is_triangle_mesh(crease))
             throw std::runtime_error("Fig. 4(d) crease split corrupted topology");
