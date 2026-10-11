@@ -38,6 +38,7 @@ void print_usage(const char* exe) {
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
         << "  --beta <value>          Chen progressive factor for *-chen modes (default: 1.2)\n"
         << "  --mesh-scale <value>    CSF global target-length scale (default: 1.0)\n"
+        << "  --csf-multipliers <a,b,c,d,e>  CSF curvature-bin multipliers (default: 1.8,1.4,1.0,0.8,0.6)\n"
         << "  --iterations <n>        Remeshing iterations (default: 5)\n"
         << "  --relax-steps <n>       Relaxation steps per iteration (default: 3)\n"
         << "  --preserve-features     Detect and preserve sharp features (default: off)\n"
@@ -101,6 +102,40 @@ rar::FieldType parse_field_type(
         "'. Expected cgal-adaptive, cgal-adaptive-pmap, cgal-adaptive-radius-cap, "
         "cgal-adaptive-radius-recovery, cgal-adaptive-radius, cgal-adaptive-chen, "
         "cgal-adaptive-radius-chen, rar, rar-chen, or csf.");
+}
+
+rar::CSFMultipliers parse_csf_multipliers(
+    const std::string& value)
+{
+    rar::CSFMultipliers multipliers{};
+    std::size_t start = 0;
+
+    for (std::size_t i = 0; i < multipliers.size(); ++i) {
+        const std::size_t end = value.find(',', start);
+        if ((i + 1 < multipliers.size() && end == std::string::npos) ||
+            (i + 1 == multipliers.size() && end != std::string::npos)) {
+            throw std::invalid_argument(
+                "--csf-multipliers requires exactly five comma-separated values");
+        }
+
+        const std::string token = value.substr(start, end - start);
+        std::size_t consumed = 0;
+        try {
+            multipliers[i] = std::stod(token, &consumed);
+        } catch (const std::exception&) {
+            throw std::invalid_argument(
+                "--csf-multipliers values must be finite and > 0");
+        }
+        if (consumed != token.size() ||
+            !(multipliers[i] > 0.0) ||
+            !std::isfinite(multipliers[i])) {
+            throw std::invalid_argument(
+                "--csf-multipliers values must be finite and > 0");
+        }
+        start = end + 1;
+    }
+
+    return multipliers;
 }
 
 rar::RemeshConfig parse_args(
@@ -170,6 +205,9 @@ rar::RemeshConfig parse_args(
         } else if (arg == "--mesh-scale") {
             cfg.csf_mesh_scale =
                 std::stod(require_value(arg));
+        } else if (arg == "--csf-multipliers") {
+            cfg.csf_multipliers =
+                parse_csf_multipliers(require_value(arg));
         } else if (arg == "--iterations") {
             cfg.iterations =
                 static_cast<unsigned int>(
@@ -243,9 +281,16 @@ void validate_config(
 
     if (cfg.field_type ==
         rar::FieldType::CSF) {
-        if (!(cfg.csf_mesh_scale > 0.0)) {
+        if (!(cfg.csf_mesh_scale > 0.0) ||
+            !std::isfinite(cfg.csf_mesh_scale)) {
             throw std::invalid_argument(
-                "mesh_scale must be > 0");
+                "mesh_scale must be finite and > 0");
+        }
+        for (const double multiplier : cfg.csf_multipliers) {
+            if (!(multiplier > 0.0) || !std::isfinite(multiplier)) {
+                throw std::invalid_argument(
+                    "CSF multipliers must be finite and > 0");
+            }
         }
         return;
     }
@@ -403,7 +448,12 @@ void print_config(
         rar::FieldType::CSF) {
         std::cout
             << ", mesh_scale="
-            << cfg.csf_mesh_scale;
+            << cfg.csf_mesh_scale
+            << ", csf_multipliers=";
+        for (std::size_t i = 0; i < cfg.csf_multipliers.size(); ++i) {
+            if (i != 0) std::cout << ',';
+            std::cout << cfg.csf_multipliers[i];
+        }
     } else {
         std::cout
             << ", epsilon=" << cfg.epsilon

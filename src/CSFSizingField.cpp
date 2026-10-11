@@ -28,8 +28,6 @@ constexpr int kPrimarySmoothSteps = 3;
 constexpr int kNeighborAverageSteps = 3;
 constexpr double kLambda = 0.5;
 constexpr int kHistogramBins = 40;
-constexpr std::array<double, 5> kMultipliers{
-    1.8, 1.4, 1.0, 0.8, 0.6};
 
 struct AuthorTopology {
     std::vector<std::vector<std::size_t>> neighbor_entries;
@@ -394,7 +392,8 @@ std::vector<double> author_secondary_neighbor_average(
 }
 
 std::vector<double> author_histogram_multipliers(
-    const std::vector<double>& curvature)
+    const std::vector<double>& curvature,
+    const CSFMultipliers& multipliers)
 {
     std::vector<double> result(curvature.size(), 1.0);
 
@@ -468,15 +467,15 @@ std::vector<double> author_histogram_multipliers(
         const double c = curvature[i];
 
         if (c < li1) {
-            result[i] = kMultipliers[0];
+            result[i] = multipliers[0];
         } else if (c < li2 && c >= li1) {
-            result[i] = kMultipliers[1];
+            result[i] = multipliers[1];
         } else if (c < li3 && c >= li2) {
-            result[i] = kMultipliers[2];
+            result[i] = multipliers[2];
         } else if (c < li4 && c >= li3) {
-            result[i] = kMultipliers[3];
+            result[i] = multipliers[3];
         } else {
-            result[i] = kMultipliers[4];
+            result[i] = multipliers[4];
         }
     }
 
@@ -527,12 +526,20 @@ void accumulate_stats(
 
 CSFSizingField::CSFSizingField(
     const double mesh_scale,
-    Mesh& mesh)
-    : mesh_scale_(mesh_scale)
+    Mesh& mesh,
+    const CSFMultipliers multipliers)
+    : mesh_scale_(mesh_scale),
+      multipliers_(multipliers)
 {
-    if (!(mesh_scale_ > 0.0)) {
+    if (!(mesh_scale_ > 0.0) || !std::isfinite(mesh_scale_)) {
         throw std::invalid_argument(
-            "CSF mesh scale must be > 0");
+            "CSF mesh scale must be finite and > 0");
+    }
+    for (const double multiplier : multipliers_) {
+        if (!(multiplier > 0.0) || !std::isfinite(multiplier)) {
+            throw std::invalid_argument(
+                "CSF multipliers must be finite and > 0");
+        }
     }
 
     raw_curvature_map_ =
@@ -718,7 +725,7 @@ void CSFSizingField::compute_initial_field(Mesh& mesh) {
             mesh);
 
     const std::vector<double> multipliers =
-        author_histogram_multipliers(smooth);
+        author_histogram_multipliers(smooth, multipliers_);
 
     std::vector<double> sizing(stats_.vertex_count, 0.0);
 

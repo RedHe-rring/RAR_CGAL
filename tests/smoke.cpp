@@ -21,6 +21,7 @@ int main() {
         cfg.min_edge_length);
     assert(cfg.chen_beta > 1.0);
     assert(cfg.csf_mesh_scale > 0.0);
+    assert(cfg.csf_multipliers == rar::kDefaultCSFMultipliers);
     assert(cfg.iterations > 0);
     assert(!cfg.preserve_features);
     assert(cfg.feature_angle_degrees == 50.0);
@@ -246,6 +247,17 @@ int main() {
     assert(
         csf_auto_name ==
         "sample__scale-1p2__it-5__relax-3__proj-on__features-off__field-csf.obj");
+
+    naming.csf_multipliers = {2.0, 1.6, 1.2, 1.0, 0.8};
+    const std::string custom_csf_auto_name =
+        std::filesystem::path(
+            rar::make_auto_output_path(naming))
+            .filename()
+            .string();
+    assert(
+        custom_csf_auto_name ==
+        "sample__scale-1p2__mult-2-1p6-1p2-1-0p8__it-5__relax-3__proj-on__features-off__field-csf.obj");
+    naming.csf_multipliers = rar::kDefaultCSFMultipliers;
 
     naming.preserve_features = true;
     naming.feature_angle_degrees = 50.0;

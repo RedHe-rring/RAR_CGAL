@@ -1,5 +1,7 @@
 #pragma once
 
+#include "rar/CSFParameters.h"
+
 #include <string>
 
 namespace rar {
@@ -67,6 +69,7 @@ struct RemeshConfig {
 
     // CSF field parameter.
     double csf_mesh_scale = 1.0;
+    CSFMultipliers csf_multipliers = kDefaultCSFMultipliers;
 
     // Common CGAL remeshing backend parameters.
     unsigned int iterations = 5;

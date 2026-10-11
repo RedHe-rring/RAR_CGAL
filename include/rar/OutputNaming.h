@@ -90,6 +90,12 @@ inline std::string make_parameterized_stem(
             << "__scale-"
             << filename_number(
                    cfg.csf_mesh_scale);
+        if (cfg.csf_multipliers != kDefaultCSFMultipliers) {
+            name << "__mult";
+            for (const double multiplier : cfg.csf_multipliers) {
+                name << '-' << filename_number(multiplier);
+            }
+        }
         break;
     }
 

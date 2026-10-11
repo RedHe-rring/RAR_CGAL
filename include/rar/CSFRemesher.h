@@ -18,7 +18,8 @@ inline CSFFieldStats run_csf_field_cgal_remeshing(
 {
     CSFSizingField sizing_field(
         cfg.csf_mesh_scale,
-        mesh);
+        mesh,
+        cfg.csf_multipliers);
 
     const CSFFieldStats initial_stats =
         sizing_field.stats();

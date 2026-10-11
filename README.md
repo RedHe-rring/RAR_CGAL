@@ -116,6 +116,12 @@ area-weighted vertex normals
 -> target_L = mean_edge_length * mesh_scale * multiplier
 ```
 
+The five curvature-bin multipliers can be overridden with
+`--csf-multipliers a,b,c,d,e` (ordered from the lowest to the highest
+curvature bin). Omitting this option keeps the code defaults above.
+`--mesh-scale` remains an independent global scale applied to every bin.
+Each value must be finite and greater than zero.
+
 The field construction is author-code-faithful; the remeshing backend is still deliberately held fixed as CGAL `isotropic_remeshing()`. Therefore this mode is named `CSF-field-CGAL`, not an exact reproduction of the author's complete remesher.
 
 ## Requirements
@@ -194,8 +200,12 @@ build\Release\rar_cgal.exe input.obj output_rar.obj ^
 build\\Release\\rar_cgal.exe input.obj output_csf.obj ^
   --field csf ^
   --mesh-scale 1.0 ^
+  --csf-multipliers 1.8,1.4,1.0,0.8,0.6 ^
   --iterations 5
 ```
+
+The `--csf-multipliers` line is optional. Custom values are included in
+automatically generated output names so different CSF runs stay separate.
 
 For the current CSF experiments, useful first-pass scales are `1.2`, `0.5`, and `0.1`.
 
