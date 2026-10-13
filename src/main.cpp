@@ -2,6 +2,7 @@
 #include "rar/RadiusAblation.h"
 #include "rar/CGALAdaptiveRemesher.h"
 #include "rar/CSFRemesher.h"
+#include "rar/C1ExternalRemesher.h"
 #include "rar/MeshOutput.h"
 #include "rar/OutputNaming.h"
 #include "rar/RARRemesher.h"
@@ -32,7 +33,8 @@ void print_usage(const char* exe) {
         << "If output_mesh is omitted, the output filename is generated from the input\n"
         << "name and the parameters that actually affect the selected field.\n\n"
         << "Options:\n"
-        << "  --field <name>          cgal-adaptive | cgal-adaptive-pmap | cgal-adaptive-radius-cap | cgal-adaptive-radius-recovery | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf\n"
+        << "  --field <name>          cgal-adaptive | cgal-adaptive-pmap | cgal-adaptive-radius-cap | cgal-adaptive-radius-recovery | cgal-adaptive-radius | cgal-adaptive-chen | cgal-adaptive-radius-chen | rar | rar-chen | csf | c1-external\n"
+        << "  --sizing-csv <path>     Target-length CSV from tools/c1 (c1-external mode)\n"
         << "  --epsilon <value>       RAR/CGAL tolerance (default: 0.183 / area-weighted p90 curvature)\n"
         << "  --min-edge <value>      RAR/CGAL minimum target edge length (default: 0.001)\n"
         << "  --max-edge <value>      RAR/CGAL maximum target edge length (default: 0.5)\n"
@@ -55,7 +57,8 @@ void print_usage(const char* exe) {
         << "  cgal-adaptive-radius-chen  Curvature-radius-guarded CGAL field followed by Chen correction.\n"
         << "  rar                 RAR cotangent-curvature sizing field with CGAL local operators.\n"
         << "  rar-chen            RAR field followed by Chen gradient-constrained correction.\n"
-        << "  csf                 CSF code-oriented smoothed-curvature field with CGAL local operators.\n";
+        << "  csf                 CSF code-oriented smoothed-curvature field with CGAL local operators.\n"
+        << "  c1-external         Read C1 per-vertex target sizes from --sizing-csv.\n";
 }
 
 rar::FieldType parse_field_type(
@@ -95,6 +98,9 @@ rar::FieldType parse_field_type(
 
     if (value == "csf") {
         return rar::FieldType::CSF;
+    }
+    if (value == "c1-external") {
+        return rar::FieldType::C1External;
     }
 
     throw std::invalid_argument(
@@ -189,6 +195,8 @@ rar::RemeshConfig parse_args(
             cfg.field_type =
                 parse_field_type(
                     require_value(arg));
+        } else if (arg == "--sizing-csv") {
+            cfg.c1_field_csv = require_value(arg);
         } else if (arg == "--epsilon") {
             cfg.epsilon =
                 std::stod(require_value(arg));
@@ -277,6 +285,13 @@ void validate_config(
         cfg.feature_angle_degrees > 180.0) {
         throw std::invalid_argument(
             "feature_angle must be in [0, 180]");
+    }
+
+    if (cfg.field_type == rar::FieldType::C1External) {
+        if (cfg.c1_field_csv.empty()) {
+            throw std::invalid_argument("--sizing-csv required for c1-external");
+        }
+        return;
     }
 
     if (cfg.field_type ==
@@ -444,7 +459,9 @@ void print_config(
         << rar::field_type_name(
                cfg.field_type);
 
-    if (cfg.field_type ==
+    if (cfg.field_type == rar::FieldType::C1External) {
+        std::cout << ", sizing_csv=" << cfg.c1_field_csv;
+    } else if (cfg.field_type ==
         rar::FieldType::CSF) {
         std::cout
             << ", mesh_scale="
@@ -557,6 +574,7 @@ int main(
         rar::AutoEpsilonStats auto_epsilon_stats;
         const bool use_auto_epsilon =
             cfg.field_type != rar::FieldType::CSF &&
+            cfg.field_type != rar::FieldType::C1External &&
             !cfg.epsilon_is_explicit;
 
         if (use_auto_epsilon) {
@@ -662,6 +680,8 @@ int main(
                 rar::run_rar_chen_field_cgal_remeshing(
                     mesh, cfg);
             print_rar_field_stats(field_stats);
+        } else if (cfg.field_type == rar::FieldType::C1External) {
+            rar::run_c1_external_remeshing(mesh, cfg);
         } else {
             const rar::CSFFieldStats field_stats =
                 rar::run_csf_field_cgal_remeshing(
