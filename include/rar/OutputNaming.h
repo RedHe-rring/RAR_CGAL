@@ -85,6 +85,10 @@ inline std::string make_parameterized_stem(
                    cfg.chen_beta);
         break;
 
+    case FieldType::C1External:
+        name << "__external";
+        break;
+
     case FieldType::CSF:
         name
             << "__scale-"
