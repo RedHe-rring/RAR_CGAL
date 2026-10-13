@@ -16,7 +16,8 @@ enum class FieldType {
     CGALAdaptiveRadiusChen,
     RAR,
     RARChen,
-    CSF
+    CSF,
+    C1External
 };
 
 inline const char* field_type_name(
@@ -43,6 +44,8 @@ inline const char* field_type_name(
         return "rar-chen";
     case FieldType::CSF:
         return "csf";
+    case FieldType::C1External:
+        return "c1-external";
     }
     return "unknown";
 }
@@ -51,6 +54,7 @@ struct RemeshConfig {
     std::string input_path;
     std::string output_path;
     std::string export_field_prefix;
+    std::string c1_field_csv;
     std::string radius_diagnostics_path;
     bool output_path_auto = false;
     bool export_field = true;
