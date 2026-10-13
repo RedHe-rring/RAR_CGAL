@@ -1,81 +1,74 @@
-# C1: error-aware adaptive curvature binning (research prototype)
+# C1: curvature-ordered error-aware sizing (research prototype)
 
-C1 extends the **curvature-bin sizing idea** of Lv et al. (TVCG 2024). It is
-*not* a reproduction of the paper's exact remeshing implementation and does
-*not* certify a Hausdorff error bound.
+C1 adds an **automatic curvature-bin target sizing** experiment to RAR_CGAL.
+It leaves the existing RAR, CSF and Chen remeshing modes unchanged.
+It is not the original CSF algorithm, and is **not Hausdorff-error certified**.
 
 ## Method
 
-1. Estimate vertex-normal angle and angle/edge-length curvature proxies.
-2. Smooth each proxy with nonnegative cotangent adjacency weights.
-3. Use raw curvature, epsilon, and a radius-guarded RAR-like formula to
-   estimate a per-vertex upper target size H. Values below min-edge are
-   clipped and **counted as conflicts**, not silently certified.
-4. Partition vertices along the smoothed curvature axis (up to 64 base bins).
-5. For each candidate partition, assign H_g = min(H_i in G_g), compute
-   area A_g, and construct the spatial adjacency graph between bins.
-6. Solve h_g = min_j H_j beta**distance(g,j) by multi-source shortest path:
-   componentwise largest feasible sizes for graph-adjacent ratio <= beta.
-7. Greedily add curvature boundaries maximizing reduction of the
-   equilateral-mesh complexity proxy sum A_g/h_g**2. Stop if gain < 2%,
-   or K=12; locally refine boundaries by single-bin shifts.
-8. Export field.csv, groups.csv, summary.json, and vertex-color PLY previews.
-   Optionally run common CGAL isotropic remeshing using --field c1-external.
+1. Estimate vertex normal-angle and normal-angle/edge-length proxies; smooth for curvature ordering.
+2. Estimate per-vertex H from raw curvature, epsilon and a radius-guarded RAR-like heuristic.
+3. Construct up to 64 base curvature bins, then merge consecutive bins into groups.
+4. For each group, H_g = min H_i; find spatial group neighbors from original mesh edges.
+5. Compute h_g = min_j H_j beta^distance(g,j) using multi-source Dijkstra.
+6. Greedily split groups by estimated complexity C = sum A_g/h_g^2; stop when gain < 2% or K reaches 12.
+7. Refine boundaries by one base-bin shift; export field/diagnostics and optionally remesh with CGAL.
 
-A group can contain spatially *disconnected* regions. Graph gradation is a
-per-group proxy, not a continuous sizing-field gradient constraint.
-New vertices created by CGAL receive neighborhood-interpolated targets.
+All grouping and stopping parameters can be overridden by CLI. C1 groups may
+contain disconnected surface regions. Beta controls *group-adjacent target
+ratios*, not the continuous field gradient or actual triangle quality.
 
-## Requirements
+## Install and test
 
-Python >=3.10, numpy, scipy, trimesh, matplotlib; pytest for tests.
-For remeshing: this repo's CGAL 6.1.1 executable, rebuilt after updating.
+From RAR_CGAL root (Windows PowerShell):
 
-From the RAR_CGAL repository root:
-
-`powershell
+```powershell
 python -m pip install -r .\tools\c1\requirements.txt
-python .\tools\c1\c1_pipeline.py --input .\data\wine_glass24.ply --output .\data\wine_glass24_c1 --epsilon 0.01 --beta 1.4 --min-edge 0.001 --max-edge 0.5
-`
-
-To run the CGAL backend as well, append:
-
-`powershell
-  --remesh-exe .\build\Release\rar_cgal.exe --iterations 5 --relax-steps 3
-`
-
-Or use the generated field directly:
-
-`powershell
-.\build\Release\rar_cgal.exe .\data\wine_glass24.ply .\data\wine_c1.ply --field c1-external --sizing-csv .\data\wine_glass24_c1\field.csv --iterations 5 --relax-steps 3 --no-export-field
-`
-
-Fixed-five-bin ablation (automatic sizing but fixed number of groups):
-
-`powershell
-python .\tools\c1\c1_pipeline.py --input .\data\wine_glass24.ply --output .\data\wine_fixed5 --epsilon 0.01 --mode fixed5
-`
-
-Tests:
-
-`powershell
 python -m pytest .\tools\c1\tests -q
-`
+cmake --build .\build --config Release --target rar_cgal
+```
+
+## Generate the C1 sizing field
+
+```powershell
+python .\tools\c1\c1_pipeline.py --input .\data\wine_glass24.ply --output .\data\wine_glass24_c1 --epsilon 0.01 --min-edge 0.001 --max-edge 0.5 --beta 1.4 --bins 64 --max-groups 12
+```
+
+## Generate sizing field and remesh in one call
+
+```powershell
+python .\tools\c1\c1_pipeline.py --input .\data\wine_glass24.ply --output .\data\wine_glass24_c1 --epsilon 0.01 --beta 1.4 --remesh-exe .\build\Release\rar_cgal.exe --iterations 5 --relax-steps 3
+```
+
+## Use an existing field.csv directly
+
+```powershell
+.\build\Release\rar_cgal.exe .\data\wine_glass24.ply .\data\wine_c1.ply --field c1-external --sizing-csv .\data\wine_glass24_c1\field.csv --iterations 5 --relax-steps 3 --no-export-field
+```
+
+## Fixed-five-bin ablation
+
+```powershell
+python .\tools\c1\c1_pipeline.py --input .\data\wine_glass24.ply --output .\data\wine_fixed5 --epsilon 0.01 --mode fixed5
+```
+
+Use the existing --field csf for the CSF-paper-inspired baseline,
+keeping the common CGAL remeshing backend. The fixed5 mode is not the
+author's original five-bin histogram scheme; it only fixes K=5.
 
 ## Outputs
 
-- field.csv: ordered original vertex coordinates, target_length, group_id,
-  curvature signals, local upper H.
-- groups.csv: group curvature range, area, H_g, h_g, vertex count.
-- summary.json: K, estimated faces, sizing range, conflicts, greedy history,
-  and optional output metrics.
-- target_length_heat.ply and groups_heat.ply: vertex-color visualizations.
-- With --remesh-exe: c1_remeshed.ply and remesher.log.
+- field.csv: original vertex coordinates and index, target length, group, and curvature signals.
+- groups.csv: group curvature extrema, area, H_g, h_g, and vertex count.
+- summary.json: K, estimated number of faces, optimization history, conflicts and mesh metrics.
+- target_length_heat.ply / groups_heat.ply: vertex color preview (unless --no-heatmap).
+- c1_remeshed.ply / remesher.log: only when --remesh-exe is supplied.
 
-**Limitations**: H is a local proxy (not a fidelity guarantee). beta bounds
-target ratios between *groups sharing an original mesh edge*, not triangle
-quality. The remeshing backend interpolates new vertex targets and uses the
-shared CGAL split/collapse/flip/relaxation logic.
+## Known limitations
 
-The C++ adapter validates CSV row count, index order and coordinates to
-prevent applying targets to the wrong input mesh.
+- H is a heuristic local size proxy, not a proven Hausdorff error bound.
+- A min-edge conflict means the minimum size has overridden an even smaller local request.
+- The optimizer assumes a target size constant inside every curvature group.
+- Target values at newly split CGAL vertices come from neighbor interpolation.
+- The C++ CSV adapter checks row count, vertex IDs and original coordinates.
+- Python unit tests do not establish CGAL compatibility; compile and test with CGAL 6.1.1.
